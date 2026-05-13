@@ -178,6 +178,7 @@ export default function GameScreen() {
           operations: settings.operations,
           timeLimit: settings.timeLimit,
           difficulty: settings.difficulty,
+          totalGames: 0, // overridden inside saveSession
         };
         const { newAchievements, pointsEarned } = saveSession(result);
         setLastSession({ ...result, newAchievements, pointsEarned });

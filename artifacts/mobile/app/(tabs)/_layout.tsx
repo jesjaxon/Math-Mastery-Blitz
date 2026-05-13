@@ -15,13 +15,14 @@ export default function GameStackLayout() {
       <Stack.Screen name="index" />
       <Stack.Screen name="setup" />
       <Stack.Screen name="game" options={{ animation: "fade" }} />
-      <Stack.Screen
-        name="results"
-        options={{ animation: "fade", gestureEnabled: false }}
-      />
+      <Stack.Screen name="results" options={{ animation: "fade", gestureEnabled: false }} />
       <Stack.Screen name="achievements" />
       <Stack.Screen name="shop" />
       <Stack.Screen name="classroom" />
+      <Stack.Screen name="aquarium" />
+      <Stack.Screen name="zoo" />
+      <Stack.Screen name="rocket" />
+      <Stack.Screen name="launch" options={{ animation: "fade", gestureEnabled: false }} />
     </Stack>
   );
 }

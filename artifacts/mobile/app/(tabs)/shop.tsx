@@ -179,6 +179,13 @@ export default function ShopScreen() {
                 >
                   {item.description}
                 </Text>
+                {item.starCoinsPerHour ? (
+                  <View style={[styles.coinRateTag, { backgroundColor: "#00B4D8" + "22" }]}>
+                    <Text style={[styles.coinRateTagText, { color: "#00B4D8" }]}>
+                      🪙 {item.starCoinsPerHour}/hr
+                    </Text>
+                  </View>
+                ) : null}
 
                 {/* Action button */}
                 {!owned ? (
@@ -387,5 +394,15 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 14,
     fontFamily: "Inter_500Medium",
+  },
+  coinRateTag: {
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    alignSelf: "center",
+  },
+  coinRateTagText: {
+    fontSize: 11,
+    fontFamily: "Inter_700Bold",
   },
 });

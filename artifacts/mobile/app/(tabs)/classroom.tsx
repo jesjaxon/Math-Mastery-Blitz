@@ -328,7 +328,8 @@ const SLOT_SECTIONS = [
 export default function ClassroomScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { gameData, equipItem } = useGame();
+  const { gameData, equipItem, getPassiveRate } = useGame();
+  const passiveRate = getPassiveRate();
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const bottomPad = Platform.OS === "web" ? 34 : insets.bottom;
@@ -376,6 +377,17 @@ export default function ClassroomScreen() {
 
         {/* Classroom scene */}
         <ClassroomScene equippedItems={gameData.equippedItems} />
+
+        {/* Star coin production banner */}
+        {passiveRate > 0 && (
+          <View style={[styles.rateBanner, { backgroundColor: "#03030F", borderColor: "#00B4D8" + "55" }]}>
+            <Text style={{ fontSize: 20 }}>🪙</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.rateValue, { color: "#00B4D8" }]}>+{passiveRate} Star Coins / hour</Text>
+              <Text style={[styles.rateSub, { color: colors.mutedForeground }]}>Earned passively — spend in Rocket Assembly</Text>
+            </View>
+          </View>
+        )}
 
         {/* Empty state */}
         {!hasAnyItems && (
@@ -582,6 +594,16 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_500Medium",
     flexShrink: 1,
   },
+  rateBanner: {
+    borderRadius: 14,
+    padding: 14,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    borderWidth: 1.5,
+  },
+  rateValue: { fontSize: 15, fontFamily: "Inter_700Bold" },
+  rateSub: { fontSize: 11, fontFamily: "Inter_400Regular", marginTop: 2 },
   shopLink: {
     borderRadius: 14,
     padding: 16,
