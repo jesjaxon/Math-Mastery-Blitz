@@ -42,7 +42,6 @@ export default function HomeScreen() {
     { label: "Aquarium", emoji: "🐠", route: "/aquarium" },
     { label: "Zoo", emoji: "🦁", route: "/zoo" },
     { label: "Shop", emoji: "🛒", route: "/shop" },
-    { label: "Settings", emoji: "⚙️", route: "/setup", highlight: true },
     {
       label: "Rocket", emoji: "🚀", route: "/rocket",
       badge: rocketProgress > 0 ? `${rocketProgress}/${rocketTotal}` : undefined,
@@ -62,8 +61,18 @@ export default function HomeScreen() {
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.header}>
-          <Text style={[styles.appTitle, { color: colors.primary }]}>Math Minute</Text>
-          <Text style={[styles.appSubtitle, { color: colors.mutedForeground }]}>How fast can you go?</Text>
+          <View style={{ width: 40 }} />
+          <View style={{ alignItems: "center" }}>
+            <Text style={[styles.appTitle, { color: colors.primary }]}>Math Minute</Text>
+            <Text style={[styles.appSubtitle, { color: colors.mutedForeground }]}>How fast can you go?</Text>
+          </View>
+          <TouchableOpacity
+            style={[styles.settingsBtn, { backgroundColor: colors.card }]}
+            onPress={() => router.push("/setup")}
+            activeOpacity={0.75}
+          >
+            <Feather name="settings" size={18} color={colors.mutedForeground} />
+          </TouchableOpacity>
         </View>
 
         {/* Dual currency row */}
@@ -175,7 +184,8 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   root: { flex: 1 },
   scroll: { paddingHorizontal: 20, gap: 14 },
-  header: { alignItems: "center", paddingVertical: 6 },
+  header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: 6 },
+  settingsBtn: { width: 40, height: 40, borderRadius: 12, alignItems: "center", justifyContent: "center" },
   appTitle: { fontSize: 42, fontFamily: "Inter_700Bold", letterSpacing: -1 },
   appSubtitle: { fontSize: 16, fontFamily: "Inter_400Regular", marginTop: 4 },
   currencyRow: { flexDirection: "row", gap: 10 },
