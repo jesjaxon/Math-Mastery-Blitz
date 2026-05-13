@@ -14,7 +14,7 @@ import {
   type Operation,
 } from "@/constants/achievements";
 
-const STORAGE_KEY = "@mathdrills_v3";
+const DEFAULT_STORAGE_KEY = "@mathdrills_v3";
 
 interface PerOpStats {
   totalCorrect: number;
@@ -158,13 +158,24 @@ interface GameContextType {
 
 const GameContext = createContext<GameContextType | null>(null);
 
-export function GameProvider({ children }: { children: React.ReactNode }) {
+export function GameProvider({
+  children,
+  storageKey = DEFAULT_STORAGE_KEY,
+}: {
+  children: React.ReactNode;
+  storageKey?: string;
+}) {
   const [gameData, setGameData] = useState<GameData>(DEFAULT_DATA);
   const [settings, setSettings] = useState<GameSettings>(DEFAULT_SETTINGS);
   const [lastSession, setLastSession] =
     useState<GameContextType["lastSession"]>(null);
   const [isLoaded, setIsLoaded] = useState(false);
   const settingsRef = useRef(settings);
+  const storageKeyRef = useRef(storageKey);
+
+  useEffect(() => {
+    storageKeyRef.current = storageKey;
+  }, [storageKey]);
 
   useEffect(() => {
     settingsRef.current = settings;
@@ -172,13 +183,16 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
 
   const persist = useCallback((data: GameData, s: GameSettings) => {
     AsyncStorage.setItem(
-      STORAGE_KEY,
+      storageKeyRef.current,
       JSON.stringify({ gameData: data, settings: s })
     ).catch(() => {});
   }, []);
 
   useEffect(() => {
-    AsyncStorage.getItem(STORAGE_KEY)
+    setIsLoaded(false);
+    setGameData(DEFAULT_DATA);
+    setSettings(DEFAULT_SETTINGS);
+    AsyncStorage.getItem(storageKey)
       .then((raw) => {
         if (raw) {
           const parsed = JSON.parse(raw) as {
@@ -195,7 +209,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
       })
       .catch(() => {})
       .finally(() => setIsLoaded(true));
-  }, []);
+  }, [storageKey]);
 
   useEffect(() => {
     if (!isLoaded) return;

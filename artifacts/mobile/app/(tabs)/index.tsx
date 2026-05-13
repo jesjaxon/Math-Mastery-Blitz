@@ -1,6 +1,6 @@
 import { Feather } from "@expo/vector-icons";
 import { router } from "expo-router";
-import React from "react";
+import React, { useEffect } from "react";
 import {
   Platform,
   ScrollView,
@@ -12,6 +12,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ROCKET_PARTS } from "@/constants/rocketParts";
 import { useGame } from "@/context/GameContext";
+import { useProfiles } from "@/context/ProfileContext";
 import { useColors } from "@/hooks/useColors";
 import type { Operation } from "@/constants/achievements";
 
@@ -26,6 +27,14 @@ export default function HomeScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { gameData, isLoaded, getPassiveRate } = useGame();
+  const { activeProfile, profiles } = useProfiles();
+
+  // Redirect to profiles screen if no profile selected
+  useEffect(() => {
+    if (profiles.length > 0 && !activeProfile) {
+      router.replace("/(tabs)/profiles");
+    }
+  }, [activeProfile, profiles]);
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const bottomPad = Platform.OS === "web" ? 34 : insets.bottom;
@@ -61,10 +70,21 @@ export default function HomeScreen() {
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.header}>
-          <View style={{ width: 40 }} />
+          {/* Player switcher */}
+          <TouchableOpacity
+            style={[styles.playerBtn, { backgroundColor: colors.card }]}
+            onPress={() => router.push("/(tabs)/profiles")}
+            activeOpacity={0.75}
+          >
+            <Text style={{ fontSize: 20 }}>{activeProfile?.avatar ?? "👤"}</Text>
+          </TouchableOpacity>
           <View style={{ alignItems: "center" }}>
             <Text style={[styles.appTitle, { color: colors.primary }]}>Math Minute</Text>
-            <Text style={[styles.appSubtitle, { color: colors.mutedForeground }]}>How fast can you go?</Text>
+            {activeProfile ? (
+              <Text style={[styles.appSubtitle, { color: colors.mutedForeground }]}>{activeProfile.name}</Text>
+            ) : (
+              <Text style={[styles.appSubtitle, { color: colors.mutedForeground }]}>How fast can you go?</Text>
+            )}
           </View>
           <TouchableOpacity
             style={[styles.settingsBtn, { backgroundColor: colors.card }]}
@@ -186,6 +206,7 @@ const styles = StyleSheet.create({
   scroll: { paddingHorizontal: 20, gap: 14 },
   header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: 6 },
   settingsBtn: { width: 40, height: 40, borderRadius: 12, alignItems: "center", justifyContent: "center" },
+  playerBtn: { width: 40, height: 40, borderRadius: 12, alignItems: "center", justifyContent: "center" },
   appTitle: { fontSize: 42, fontFamily: "Inter_700Bold", letterSpacing: -1 },
   appSubtitle: { fontSize: 16, fontFamily: "Inter_400Regular", marginTop: 4 },
   currencyRow: { flexDirection: "row", gap: 10 },

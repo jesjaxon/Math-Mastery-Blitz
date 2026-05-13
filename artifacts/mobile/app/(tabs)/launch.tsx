@@ -60,7 +60,7 @@ function w2s(wx: number, wy: number, cam: Cam) {
 function calcTrajectory(sx: number, sy: number, vx: number, vy: number) {
   const pts: Array<{ x: number; y: number }> = [];
   let px = sx, py = sy, pvx = vx, pvy = vy;
-  for (let i = 0; i < 600; i++) {
+  for (let i = 0; i < 1200; i++) {
     for (const body of SOLAR_SYSTEM) {
       const dx = body.x - px, dy = body.y - py;
       const r2 = dx * dx + dy * dy;
@@ -74,7 +74,7 @@ function calcTrajectory(sx: number, sy: number, vx: number, vy: number) {
     py += pvy;
     const sdx = px - SUN_BODY.x, sdy = py - SUN_BODY.y;
     if (sdx * sdx + sdy * sdy < SUN_BODY.radius * SUN_BODY.radius) break;
-    if (Math.abs(px) > 16000 || Math.abs(py) > 16000) break;
+    if (Math.abs(px) > 18000 || Math.abs(py) > 18000) break;
     if (i > 20) {
       const edx = px - EARTH_BODY.x, edy = py - EARTH_BODY.y;
       if (edx * edx + edy * edy < EARTH_BODY.captureRadius * EARTH_BODY.captureRadius) {
@@ -82,7 +82,25 @@ function calcTrajectory(sx: number, sy: number, vx: number, vy: number) {
         break;
       }
     }
-    if (i % 6 === 0) pts.push({ x: px, y: py });
+    if (i % 4 === 0) pts.push({ x: px, y: py });
+  }
+  return pts;
+}
+
+/** Compute a Hohmann-like nav guide: curved waypoints from rocket to target using gravity hints */
+function calcNavPath(
+  fromX: number, fromY: number, toX: number, toY: number
+): Array<{ x: number; y: number }> {
+  const steps = 40;
+  const pts: Array<{ x: number; y: number }> = [];
+  for (let i = 0; i <= steps; i++) {
+    const t = i / steps;
+    // Cubic bezier — pull control point toward Sun for gravitational curvature feel
+    const cx = (fromX + toX) / 2 + (SUN_BODY.x - (fromX + toX) / 2) * 0.35;
+    const cy = (fromY + toY) / 2 + (SUN_BODY.y - (fromY + toY) / 2) * 0.35;
+    const x = (1 - t) * (1 - t) * fromX + 2 * (1 - t) * t * cx + t * t * toX;
+    const y = (1 - t) * (1 - t) * fromY + 2 * (1 - t) * t * cy + t * t * toY;
+    pts.push({ x, y });
   }
   return pts;
 }
@@ -583,6 +601,26 @@ export default function LaunchScreen() {
             }} />
           </>
         );
+      })()}
+
+      {/* Nav path guide — curved line from rocket to selected target */}
+      {phase === "flying" && selectedPlanet && (() => {
+        const navPts = calcNavPath(r.x, r.y, selectedPlanet.x, selectedPlanet.y);
+        return navPts.map((pt, i) => {
+          const ts = w2s(pt.x, pt.y, cam);
+          if (ts.x < -6 || ts.x > W + 6 || ts.y < -6 || ts.y > H + 6) return null;
+          const frac = i / navPts.length;
+          const isDashed = Math.floor(i / 3) % 2 === 0;
+          if (!isDashed) return null;
+          return (
+            <View key={`np${i}`} pointerEvents="none" style={{
+              position: "absolute",
+              left: ts.x - 2.5, top: ts.y - 2.5,
+              width: 5, height: 5, borderRadius: 2.5,
+              backgroundColor: `rgba(255,215,0,${0.12 + frac * 0.5})`,
+            }} />
+          );
+        });
       })()}
 
       {/* Nav arrows during flight — edge arrows pointing to all unmined planets */}

@@ -15,6 +15,7 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { GameProvider } from "@/context/GameContext";
+import { ProfileProvider, useProfiles } from "@/context/ProfileContext";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -25,6 +26,16 @@ function RootLayoutNav() {
     <Stack screenOptions={{ headerShown: false }}>
       <Stack.Screen name="(tabs)" />
     </Stack>
+  );
+}
+
+function ProfiledGameProvider({ children }: { children: React.ReactNode }) {
+  const { activeProfile } = useProfiles();
+  const storageKey = activeProfile?.storageKey ?? "@mathdrills_v3";
+  return (
+    <GameProvider storageKey={storageKey}>
+      {children}
+    </GameProvider>
   );
 }
 
@@ -50,9 +61,11 @@ export default function RootLayout() {
         <QueryClientProvider client={queryClient}>
           <GestureHandlerRootView>
             <KeyboardProvider>
-              <GameProvider>
-                <RootLayoutNav />
-              </GameProvider>
+              <ProfileProvider>
+                <ProfiledGameProvider>
+                  <RootLayoutNav />
+                </ProfiledGameProvider>
+              </ProfileProvider>
             </KeyboardProvider>
           </GestureHandlerRootView>
         </QueryClientProvider>
