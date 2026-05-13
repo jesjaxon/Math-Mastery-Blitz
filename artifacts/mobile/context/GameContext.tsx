@@ -37,6 +37,7 @@ export interface GameData {
   displayedZooAnimals: string[];
   rocketPartsOwned: string[];
   launchComplete: boolean;
+  planetGems: Record<string, number>;
   totalGames: number;
   allTimeBest: number;
 }
@@ -75,6 +76,7 @@ const DEFAULT_DATA: GameData = {
   displayedZooAnimals: [],
   rocketPartsOwned: [],
   launchComplete: false,
+  planetGems: {},
   totalGames: 0,
   allTimeBest: 0,
 };
@@ -144,6 +146,8 @@ interface GameContextType {
   toggleDisplayAnimal: (id: string, type: "aquarium" | "zoo") => void;
   buyRocketPart: (partId: string) => boolean;
   completeLaunch: () => void;
+  addPlanetGem: (planetId: string) => void;
+  spendStarCoins: (amount: number) => boolean;
   unlockAchievement: (id: string) => void;
   getPassiveRate: () => number;
   resetGameProgress: () => void;
@@ -448,6 +452,38 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     });
   }, [persist, checkExternalAchievements, applyExternalAchievements]);
 
+  const addPlanetGem = useCallback(
+    (planetId: string) => {
+      setGameData((prev) => {
+        const next: GameData = {
+          ...prev,
+          planetGems: { ...prev.planetGems, [planetId]: (prev.planetGems[planetId] ?? 0) + 1 },
+        };
+        persist(next, settingsRef.current);
+        return next;
+      });
+    },
+    [persist]
+  );
+
+  const spendStarCoins = useCallback(
+    (amount: number): boolean => {
+      let success = false;
+      setGameData((prev) => {
+        if (!settingsRef.current.devUnlimitedMoney && prev.starCoins < amount) return prev;
+        success = true;
+        const next: GameData = {
+          ...prev,
+          starCoins: settingsRef.current.devUnlimitedMoney ? prev.starCoins : prev.starCoins - amount,
+        };
+        persist(next, settingsRef.current);
+        return next;
+      });
+      return success;
+    },
+    [persist]
+  );
+
   const unlockAchievement = useCallback(
     (id: string) => {
       const ach = ACHIEVEMENTS.find((a) => a.id === id);
@@ -526,6 +562,8 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
         toggleDisplayAnimal,
         buyRocketPart,
         completeLaunch,
+        addPlanetGem,
+        spendStarCoins,
         unlockAchievement,
         getPassiveRate: getRate,
         resetGameProgress,
