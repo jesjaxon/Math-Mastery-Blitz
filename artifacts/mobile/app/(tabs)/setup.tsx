@@ -2,9 +2,11 @@ import { Feather } from "@expo/vector-icons";
 import { router } from "expo-router";
 import React from "react";
 import {
+  Alert,
   Platform,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
   TouchableOpacity,
   View,
@@ -37,7 +39,14 @@ const DIFFICULTY_OPTIONS: { id: Difficulty; label: string; desc: string; color: 
 export default function SetupScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { settings, updateSettings } = useGame();
+  const {
+    settings,
+    updateSettings,
+    resetGameProgress,
+    resetAchievements,
+    gameData,
+    setDevUnlimitedMoney,
+  } = useGame();
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const bottomPad = Platform.OS === "web" ? 34 : insets.bottom;
@@ -58,6 +67,28 @@ export default function SetupScreen() {
 
   const canStart = settings.operations.length > 0;
 
+  const confirmReset = () => {
+    Alert.alert("Reset progress?", "This clears all game progress and currencies.", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Reset",
+        style: "destructive",
+        onPress: resetGameProgress,
+      },
+    ]);
+  };
+
+  const confirmResetAchievements = () => {
+    Alert.alert("Reset achievements?", "This clears all unlocked achievements and bonuses.", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Reset",
+        style: "destructive",
+        onPress: resetAchievements,
+      },
+    ]);
+  };
+
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
       <ScrollView
@@ -67,28 +98,19 @@ export default function SetupScreen() {
         ]}
         showsVerticalScrollIndicator={false}
       >
-        {/* Header */}
         <View style={styles.header}>
-          <TouchableOpacity
-            style={[styles.backBtn, { backgroundColor: colors.card }]}
-            onPress={() => router.back()}
-          >
+          <TouchableOpacity style={[styles.backBtn, { backgroundColor: colors.card }]} onPress={() => router.back()}>
             <Feather name="arrow-left" size={20} color={colors.foreground} />
           </TouchableOpacity>
           <Text style={[styles.title, { color: colors.foreground }]}>New Drill</Text>
           <View style={{ width: 40 }} />
         </View>
 
-        {/* Operations */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
-            <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
-              Operations
-            </Text>
+            <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Operations</Text>
             <TouchableOpacity onPress={selectAll}>
-              <Text style={[styles.selectAll, { color: colors.primary }]}>
-                All
-              </Text>
+              <Text style={[styles.selectAll, { color: colors.primary }]}>All</Text>
             </TouchableOpacity>
           </View>
           <View style={styles.opsGrid}>
@@ -108,33 +130,19 @@ export default function SetupScreen() {
                   onPress={() => toggleOp(op.id)}
                   activeOpacity={0.75}
                 >
-                  <Text style={[styles.opSymbol, { color: op.color }]}>
-                    {op.symbol}
-                  </Text>
-                  <Text
-                    style={[
-                      styles.opLabel,
-                      { color: selected ? colors.foreground : colors.mutedForeground },
-                    ]}
-                  >
+                  <Text style={[styles.opSymbol, { color: op.color }]}>{op.symbol}</Text>
+                  <Text style={[styles.opLabel, { color: selected ? colors.foreground : colors.mutedForeground }]}>
                     {op.label}
                   </Text>
-                  {selected && (
-                    <View
-                      style={[styles.checkDot, { backgroundColor: op.color }]}
-                    />
-                  )}
+                  {selected && <View style={[styles.checkDot, { backgroundColor: op.color }]} />}
                 </TouchableOpacity>
               );
             })}
           </View>
         </View>
 
-        {/* Time Limit */}
         <View style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
-            Time Limit
-          </Text>
+          <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Time Limit</Text>
           <View style={styles.timeRow}>
             {TIME_OPTIONS.map((t) => {
               const selected = settings.timeLimit === t.value;
@@ -151,12 +159,7 @@ export default function SetupScreen() {
                   onPress={() => updateSettings({ timeLimit: t.value })}
                   activeOpacity={0.75}
                 >
-                  <Text
-                    style={[
-                      styles.timeBtnText,
-                      { color: selected ? "#fff" : colors.mutedForeground },
-                    ]}
-                  >
+                  <Text style={[styles.timeBtnText, { color: selected ? "#fff" : colors.mutedForeground }]}>
                     {t.label}
                   </Text>
                 </TouchableOpacity>
@@ -165,11 +168,8 @@ export default function SetupScreen() {
           </View>
         </View>
 
-        {/* Difficulty */}
         <View style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
-            Difficulty
-          </Text>
+          <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Difficulty</Text>
           <View style={styles.diffRow}>
             {DIFFICULTY_OPTIONS.map((d) => {
               const selected = settings.difficulty === d.id;
@@ -184,24 +184,45 @@ export default function SetupScreen() {
                       borderWidth: selected ? 2 : 1,
                     },
                   ]}
-                  onPress={() =>
-                    updateSettings({ difficulty: d.id as Difficulty })
-                  }
+                  onPress={() => updateSettings({ difficulty: d.id as Difficulty })}
                   activeOpacity={0.75}
                 >
                   <Text style={[styles.diffLabel, { color: selected ? d.color : colors.mutedForeground }]}>
                     {d.label}
                   </Text>
-                  <Text style={[styles.diffDesc, { color: colors.mutedForeground }]}>
-                    {d.desc}
-                  </Text>
+                  <Text style={[styles.diffDesc, { color: colors.mutedForeground }]}>{d.desc}</Text>
                 </TouchableOpacity>
               );
             })}
           </View>
         </View>
 
-        {/* Start Button */}
+        <View style={[styles.section, { gap: 10 }]}>
+          <View style={[styles.devCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <View style={styles.devRow}>
+              <View>
+                <Text style={[styles.devTitle, { color: colors.foreground }]}>Dev mode</Text>
+                <Text style={[styles.devSub, { color: colors.mutedForeground }]}>Unlimited money for testing purchases</Text>
+              </View>
+              <Switch
+                value={settings.devUnlimitedMoney}
+                onValueChange={setDevUnlimitedMoney}
+              />
+            </View>
+            <Text style={[styles.devHint, { color: colors.mutedForeground }]}>Owned: {gameData.ownedItems.length} items · Animals: {gameData.aquariumAnimals.length + gameData.zooAnimals.length} · Rocket parts: {gameData.rocketPartsOwned.length}/6</Text>
+          </View>
+          <View style={styles.devActions}>
+            <TouchableOpacity style={[styles.devActionBtn, { backgroundColor: colors.card, borderColor: colors.border }]} onPress={confirmReset}>
+              <Feather name="refresh-cw" size={16} color={colors.foreground} />
+              <Text style={[styles.devActionText, { color: colors.foreground }]}>Reset game</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.devActionBtn, { backgroundColor: colors.card, borderColor: colors.border }]} onPress={confirmResetAchievements}>
+              <Feather name="award" size={16} color={colors.foreground} />
+              <Text style={[styles.devActionText, { color: colors.foreground }]}>Reset achievements</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
         <TouchableOpacity
           style={[
             styles.startBtn,
@@ -222,113 +243,33 @@ export default function SetupScreen() {
 const styles = StyleSheet.create({
   root: { flex: 1 },
   scroll: { paddingHorizontal: 20, gap: 24 },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  backBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  title: {
-    fontSize: 22,
-    fontFamily: "Inter_700Bold",
-  },
+  header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  backBtn: { width: 40, height: 40, borderRadius: 12, alignItems: "center", justifyContent: "center" },
+  title: { fontSize: 22, fontFamily: "Inter_700Bold" },
   section: { gap: 12 },
-  sectionHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  sectionTitle: {
-    fontSize: 16,
-    fontFamily: "Inter_600SemiBold",
-  },
-  selectAll: {
-    fontSize: 14,
-    fontFamily: "Inter_600SemiBold",
-  },
-  opsGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 10,
-  },
-  opBtn: {
-    width: "47%",
-    borderRadius: 16,
-    padding: 16,
-    alignItems: "center",
-    gap: 6,
-    position: "relative",
-  },
-  opSymbol: {
-    fontSize: 32,
-    fontFamily: "Inter_700Bold",
-  },
-  opLabel: {
-    fontSize: 14,
-    fontFamily: "Inter_500Medium",
-  },
-  checkDot: {
-    position: "absolute",
-    top: 10,
-    right: 10,
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
-  timeRow: {
-    flexDirection: "row",
-    gap: 10,
-  },
-  timeBtn: {
-    flex: 1,
-    borderRadius: 14,
-    paddingVertical: 14,
-    alignItems: "center",
-    borderWidth: 1,
-  },
-  timeBtnText: {
-    fontSize: 15,
-    fontFamily: "Inter_600SemiBold",
-  },
-  diffRow: {
-    flexDirection: "row",
-    gap: 10,
-  },
-  diffBtn: {
-    flex: 1,
-    borderRadius: 14,
-    paddingVertical: 14,
-    paddingHorizontal: 8,
-    alignItems: "center",
-    gap: 4,
-  },
-  diffLabel: {
-    fontSize: 15,
-    fontFamily: "Inter_700Bold",
-  },
-  diffDesc: {
-    fontSize: 11,
-    fontFamily: "Inter_400Regular",
-    textAlign: "center",
-  },
-  startBtn: {
-    borderRadius: 18,
-    paddingVertical: 18,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 10,
-    marginTop: 4,
-  },
-  startBtnText: {
-    fontSize: 20,
-    fontFamily: "Inter_700Bold",
-    color: "#fff",
-  },
+  sectionHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  sectionTitle: { fontSize: 16, fontFamily: "Inter_600SemiBold" },
+  selectAll: { fontSize: 14, fontFamily: "Inter_600SemiBold" },
+  opsGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
+  opBtn: { width: "47%", borderRadius: 16, padding: 16, alignItems: "center", gap: 6, position: "relative" },
+  opSymbol: { fontSize: 32, fontFamily: "Inter_700Bold" },
+  opLabel: { fontSize: 14, fontFamily: "Inter_500Medium" },
+  checkDot: { position: "absolute", top: 10, right: 10, width: 8, height: 8, borderRadius: 4 },
+  timeRow: { flexDirection: "row", gap: 10 },
+  timeBtn: { flex: 1, borderRadius: 14, paddingVertical: 14, alignItems: "center", borderWidth: 1 },
+  timeBtnText: { fontSize: 15, fontFamily: "Inter_600SemiBold" },
+  diffRow: { flexDirection: "row", gap: 10 },
+  diffBtn: { flex: 1, borderRadius: 14, paddingVertical: 14, paddingHorizontal: 8, alignItems: "center", gap: 4 },
+  diffLabel: { fontSize: 15, fontFamily: "Inter_700Bold" },
+  diffDesc: { fontSize: 11, fontFamily: "Inter_400Regular", textAlign: "center" },
+  devCard: { borderRadius: 16, padding: 14, borderWidth: 1, gap: 10 },
+  devRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 },
+  devTitle: { fontSize: 15, fontFamily: "Inter_700Bold" },
+  devSub: { fontSize: 12, fontFamily: "Inter_400Regular", marginTop: 2 },
+  devHint: { fontSize: 12, fontFamily: "Inter_400Regular" },
+  devActions: { flexDirection: "row", gap: 10 },
+  devActionBtn: { flex: 1, borderRadius: 14, paddingVertical: 12, paddingHorizontal: 10, borderWidth: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8 },
+  devActionText: { fontSize: 13, fontFamily: "Inter_600SemiBold" },
+  startBtn: { borderRadius: 18, paddingVertical: 18, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 10, marginTop: 4 },
+  startBtnText: { fontSize: 20, fontFamily: "Inter_700Bold", color: "#fff" },
 });

@@ -45,6 +45,7 @@ export interface GameSettings {
   operations: Operation[];
   timeLimit: number;
   difficulty: Difficulty;
+  devUnlimitedMoney: boolean;
 }
 
 export interface SaveSessionResult {
@@ -56,6 +57,7 @@ const DEFAULT_SETTINGS: GameSettings = {
   operations: ["add"],
   timeLimit: 60,
   difficulty: "medium",
+  devUnlimitedMoney: false,
 };
 
 const DEFAULT_DATA: GameData = {
@@ -121,6 +123,13 @@ function applyPassiveTick(prev: GameData): GameData {
   return { ...prev, starCoins: prev.starCoins + earned, lastPassiveCheck: now };
 }
 
+function createDefaultGameData(): GameData {
+  return {
+    ...DEFAULT_DATA,
+    lastPassiveCheck: Date.now(),
+  };
+}
+
 interface GameContextType {
   gameData: GameData;
   settings: GameSettings;
@@ -137,6 +146,9 @@ interface GameContextType {
   completeLaunch: () => void;
   unlockAchievement: (id: string) => void;
   getPassiveRate: () => number;
+  resetGameProgress: () => void;
+  resetAchievements: () => void;
+  setDevUnlimitedMoney: (enabled: boolean) => void;
   isLoaded: boolean;
 }
 
@@ -181,7 +193,6 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
       .finally(() => setIsLoaded(true));
   }, []);
 
-  // Passive currency tick every 60 seconds
   useEffect(() => {
     if (!isLoaded) return;
     const interval = setInterval(() => {
@@ -315,12 +326,12 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
         const { SHOP_ITEMS } =
           require("@/constants/shopItems") as typeof import("@/constants/shopItems");
         const item = SHOP_ITEMS.find((i) => i.id === itemId);
-        if (!item || prev.ownedItems.includes(itemId) || prev.points < item.price)
-          return prev;
+        if (!item || prev.ownedItems.includes(itemId)) return prev;
+        if (!settingsRef.current.devUnlimitedMoney && prev.points < item.price) return prev;
         success = true;
         let next: GameData = {
           ...prev,
-          points: prev.points - item.price,
+          points: settingsRef.current.devUnlimitedMoney ? prev.points : prev.points - item.price,
           ownedItems: [...prev.ownedItems, itemId],
         };
         const extIds = checkExternalAchievements(next);
@@ -363,12 +374,13 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
             : ZOO_ANIMALS.find((a) => a.id === id);
         if (!animal) return prev;
         const ownedKey = type === "aquarium" ? "aquariumAnimals" : "zooAnimals";
-        if (prev[ownedKey].includes(id) || prev.points < animal.price)
+        if (prev[ownedKey].includes(id)) return prev;
+        if (!settingsRef.current.devUnlimitedMoney && prev.points < animal.price)
           return prev;
         success = true;
         let next: GameData = {
           ...prev,
-          points: prev.points - animal.price,
+          points: settingsRef.current.devUnlimitedMoney ? prev.points : prev.points - animal.price,
           [ownedKey]: [...prev[ownedKey], id],
         };
         const extIds = checkExternalAchievements(next);
@@ -408,12 +420,13 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
         const { ROCKET_PARTS } =
           require("@/constants/rocketParts") as typeof import("@/constants/rocketParts");
         const part = ROCKET_PARTS.find((p) => p.id === partId);
-        if (!part || prev.rocketPartsOwned.includes(partId) || prev.starCoins < part.cost)
+        if (!part || prev.rocketPartsOwned.includes(partId)) return prev;
+        if (!settingsRef.current.devUnlimitedMoney && prev.starCoins < part.cost)
           return prev;
         success = true;
         const next: GameData = {
           ...prev,
-          starCoins: prev.starCoins - part.cost,
+          starCoins: settingsRef.current.devUnlimitedMoney ? prev.starCoins : prev.starCoins - part.cost,
           rocketPartsOwned: [...prev.rocketPartsOwned, partId],
         };
         persist(next, settingsRef.current);
@@ -453,6 +466,37 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     [persist]
   );
 
+  const resetGameProgress = useCallback(() => {
+    setGameData((prev) => {
+      const next = createDefaultGameData();
+      persist(next, settingsRef.current);
+      return { ...next, lastPassiveCheck: prev.lastPassiveCheck };
+    });
+  }, [persist]);
+
+  const resetAchievements = useCallback(() => {
+    setGameData((prev) => {
+      const next: GameData = {
+        ...prev,
+        unlockedAchievements: {},
+        unclaimedBonuses: {},
+      };
+      persist(next, settingsRef.current);
+      return next;
+    });
+  }, [persist]);
+
+  const setDevUnlimitedMoney = useCallback(
+    (enabled: boolean) => {
+      setSettings((prev) => {
+        const next = { ...prev, devUnlimitedMoney: enabled };
+        persist(gameData, next);
+        return next;
+      });
+    },
+    [gameData, persist]
+  );
+
   const getRate = useCallback(() => getPassiveRate(gameData), [gameData]);
 
   return (
@@ -473,6 +517,9 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
         completeLaunch,
         unlockAchievement,
         getPassiveRate: getRate,
+        resetGameProgress,
+        resetAchievements,
+        setDevUnlimitedMoney,
         isLoaded,
       }}
     >
