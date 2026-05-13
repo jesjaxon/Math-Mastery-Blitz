@@ -26,20 +26,23 @@ import { useGame } from "@/context/GameContext";
 
 const { width: W, height: H } = Dimensions.get("window");
 
-const IDLE_ORBIT_R = 160;  // world units from Earth where rocket sits when aiming
-const DRAG_SCALE = 0.1;    // world/tick per screen pixel of slingshot drag
-const MAX_DRAG = 90;       // max slingshot pull in screen pixels
-const AIM_ZOOM = 0.4;      // camera zoom when in aiming mode
+const IDLE_ORBIT_R = 160;
+const DRAG_SCALE = 0.1;
+const MAX_DRAG = 90;
+const AIM_ZOOM = 0.4;
 const TRAIL_MAX = 80;
 const ZOOM_MIN = 0.025;
 const ZOOM_MAX = 2.0;
 const ZOOM_FACTOR = 1.5;
+const THRUST_POWER = 0.45;
+const TRAJ_UPDATE_INTERVAL = 12; // ticks between trajectory recalc
 
 type Phase = "select" | "aim" | "flying" | "win" | "crash" | "lost";
+type ThrustDir = "U" | "D" | "L" | "R";
 
 interface Cam { x: number; y: number; zoom: number; }
 
-// ─── Deterministic star field in world coordinates ────────────────────────────
+// ─── Star field ───────────────────────────────────────────────────────────────
 
 const STAR_FIELD = Array.from({ length: 90 }, (_, i) => ({
   wx: ((i * 173 + 13) % 97) / 97 * 28000 - 14000,
@@ -48,7 +51,7 @@ const STAR_FIELD = Array.from({ length: 90 }, (_, i) => ({
   opacity: 0.18 + (i % 7) * 0.08,
 }));
 
-// ─── Physics & camera helpers ─────────────────────────────────────────────────
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function w2s(wx: number, wy: number, cam: Cam) {
   return { x: (wx - cam.x) * cam.zoom + W / 2, y: (wy - cam.y) * cam.zoom + H / 2 };
@@ -84,11 +87,29 @@ function calcTrajectory(sx: number, sy: number, vx: number, vy: number) {
   return pts;
 }
 
-// ─── Rubber-band line helper ──────────────────────────────────────────────────
+/** Returns screen-edge position of an arrow pointing from screen center to target */
+function getEdgeArrow(targetWx: number, targetWy: number, cam: Cam) {
+  const ts = w2s(targetWx, targetWy, cam);
+  const cx = W / 2, cy = H * 0.48;
+  const dx = ts.x - cx, dy = ts.y - cy;
+  const angle = Math.atan2(dy, dx);
+  const marginH = 36, marginV = 90;
+  const onScreen = ts.x > marginH && ts.x < W - marginH && ts.y > marginV && ts.y < H - 120;
+  if (onScreen) return { sx: ts.x, sy: ts.y, angle, offScreen: false };
+  const scaleX = dx !== 0 ? (dx > 0 ? (W - marginH - cx) : (cx - marginH)) / Math.abs(dx) : Infinity;
+  const scaleY = dy !== 0 ? (dy > 0 ? (H - 120 - cy) : (cy - marginV)) / Math.abs(dy) : Infinity;
+  const scale = Math.min(scaleX, scaleY);
+  return {
+    sx: Math.max(marginH, Math.min(W - marginH, cx + dx * scale)),
+    sy: Math.max(marginV, Math.min(H - 120, cy + dy * scale)),
+    angle,
+    offScreen: true,
+  };
+}
 
-function LineView({
-  x1, y1, x2, y2, color, thickness = 2.5, opacity = 1,
-}: {
+// ─── Line helper ──────────────────────────────────────────────────────────────
+
+function LineView({ x1, y1, x2, y2, color, thickness = 2.5, opacity = 1 }: {
   x1: number; y1: number; x2: number; y2: number;
   color: string; thickness?: number; opacity?: number;
 }) {
@@ -114,6 +135,26 @@ function LineView({
   );
 }
 
+// ─── Thruster button ──────────────────────────────────────────────────────────
+
+function ThrusterBtn({ label, onIn, onOut, style: extraStyle }: {
+  label: string;
+  onIn: () => void;
+  onOut: () => void;
+  style?: object;
+}) {
+  return (
+    <TouchableOpacity
+      onPressIn={onIn}
+      onPressOut={onOut}
+      activeOpacity={0.6}
+      style={[styles.thrusterBtn, extraStyle]}
+    >
+      <Text style={styles.thrusterBtnText}>{label}</Text>
+    </TouchableOpacity>
+  );
+}
+
 // ─── Main screen ──────────────────────────────────────────────────────────────
 
 export default function LaunchScreen() {
@@ -129,6 +170,7 @@ export default function LaunchScreen() {
   const [slingshotDrag, setSlingshotDrag] = useState<{ dx: number; dy: number } | null>(null);
   const [minedPlanets, setMinedPlanets] = useState<string[]>([]);
   const [renderTick, setRenderTick] = useState(0);
+  const [flightSpeed, setFlightSpeed] = useState(0);
 
   // ── Refs ───────────────────────────────────────────────────────────────────
   const phaseRef = useRef<Phase>("select");
@@ -139,6 +181,9 @@ export default function LaunchScreen() {
   const slingshotDragRef = useRef<{ dx: number; dy: number } | null>(null);
   const gameLoopRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const panRef = useRef({ lastX: 0, lastY: 0, totalDist: 0 });
+  const thrustersRef = useRef<Set<ThrustDir>>(new Set());
+  const tickCountRef = useRef(0);
+  const flightTrajRef = useRef<Array<{ x: number; y: number }>>([]);
 
   useEffect(() => { camRef.current = cam; }, [cam]);
 
@@ -151,7 +196,8 @@ export default function LaunchScreen() {
     ? settings.devUnlimitedMoney || gameData.starCoins >= selectedPlanet.launchCost
     : false;
 
-  const trajectoryPoints = useMemo(() => {
+  // Aim-phase trajectory (from slingshot drag)
+  const aimTrajectoryPoints = useMemo(() => {
     if (!slingshotDrag) return [];
     const mag = Math.sqrt(slingshotDrag.dx ** 2 + slingshotDrag.dy ** 2);
     if (mag < 5) return [];
@@ -167,6 +213,7 @@ export default function LaunchScreen() {
   const endGame = useCallback(
     (result: "win" | "crash" | "lost") => {
       if (gameLoopRef.current) { clearInterval(gameLoopRef.current); gameLoopRef.current = null; }
+      thrustersRef.current.clear();
       phaseRef.current = result;
       setPhase(result);
       if (result === "win") {
@@ -185,7 +232,10 @@ export default function LaunchScreen() {
   const doLaunch = useCallback((vx: number, vy: number) => {
     rocketRef.current = { x: EARTH_BODY.x + IDLE_ORBIT_R, y: EARTH_BODY.y, vx, vy };
     trailRef.current = [];
+    flightTrajRef.current = [];
     visitedRef.current = new Set<string>();
+    tickCountRef.current = 0;
+    thrustersRef.current.clear();
     phaseRef.current = "flying";
     setPhase("flying");
     setMinedPlanets([]);
@@ -245,9 +295,12 @@ export default function LaunchScreen() {
 
   const resetGame = useCallback(() => {
     if (gameLoopRef.current) { clearInterval(gameLoopRef.current); gameLoopRef.current = null; }
+    thrustersRef.current.clear();
     rocketRef.current = { x: EARTH_BODY.x + IDLE_ORBIT_R, y: EARTH_BODY.y, vx: 0, vy: 0 };
     trailRef.current = [];
+    flightTrajRef.current = [];
     visitedRef.current = new Set<string>();
+    tickCountRef.current = 0;
     phaseRef.current = "select";
     setPhase("select");
     setMinedPlanets([]);
@@ -259,14 +312,22 @@ export default function LaunchScreen() {
     camRef.current = next;
   }, []);
 
-  // ── PanResponder (handlersRef pattern for fresh closures) ─────────────────
+  // ── Thruster handlers ─────────────────────────────────────────────────────
+  const addThrust = useCallback((dir: ThrustDir) => {
+    thrustersRef.current.add(dir);
+    if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+  }, []);
+  const removeThrust = useCallback((dir: ThrustDir) => {
+    thrustersRef.current.delete(dir);
+  }, []);
+
+  // ── PanResponder ──────────────────────────────────────────────────────────
   const handlersRef = useRef<{
     onGrant: (e: GestureResponderEvent, gs: PanResponderGestureState) => void;
     onMove: (e: GestureResponderEvent, gs: PanResponderGestureState) => void;
     onRelease: (e: GestureResponderEvent, gs: PanResponderGestureState) => void;
   }>({ onGrant: () => {}, onMove: () => {}, onRelease: () => {} });
 
-  // Updated every render so handlers always have fresh state/callbacks
   handlersRef.current.onGrant = (evt, _gs) => {
     panRef.current.lastX = evt.nativeEvent.pageX;
     panRef.current.lastY = evt.nativeEvent.pageY;
@@ -280,7 +341,7 @@ export default function LaunchScreen() {
         : { dx: gs.dx, dy: gs.dy };
       slingshotDragRef.current = clamped;
       setSlingshotDrag({ ...clamped });
-    } else if (phaseRef.current === "select") {
+    } else if (phaseRef.current === "select" || phaseRef.current === "flying") {
       const tx = evt.nativeEvent.pageX, ty = evt.nativeEvent.pageY;
       const ddx = tx - panRef.current.lastX, ddy = ty - panRef.current.lastY;
       panRef.current.lastX = tx;
@@ -321,10 +382,22 @@ export default function LaunchScreen() {
   useEffect(() => {
     if (phase !== "flying") return;
     if (gameLoopRef.current) clearInterval(gameLoopRef.current);
+    tickCountRef.current = 0;
 
     gameLoopRef.current = setInterval(() => {
       const r = rocketRef.current;
 
+      // Apply thrusters (world-axis)
+      if (thrustersRef.current.size > 0) {
+        for (const dir of thrustersRef.current) {
+          if (dir === "U") r.vy -= THRUST_POWER;
+          else if (dir === "D") r.vy += THRUST_POWER;
+          else if (dir === "L") r.vx -= THRUST_POWER;
+          else if (dir === "R") r.vx += THRUST_POWER;
+        }
+      }
+
+      // Gravity
       for (const body of SOLAR_SYSTEM) {
         const dx = body.x - r.x, dy = body.y - r.y;
         const r2 = dx * dx + dy * dy, d = Math.sqrt(r2);
@@ -338,6 +411,15 @@ export default function LaunchScreen() {
       trailRef.current.push({ x: r.x, y: r.y });
       if (trailRef.current.length > TRAIL_MAX) trailRef.current.shift();
 
+      // Update flight trajectory every N ticks
+      tickCountRef.current++;
+      if (tickCountRef.current % TRAJ_UPDATE_INTERVAL === 0) {
+        flightTrajRef.current = calcTrajectory(r.x, r.y, r.vx, r.vy);
+        const speed = Math.sqrt(r.vx * r.vx + r.vy * r.vy);
+        setFlightSpeed(Math.round(speed * 10) / 10);
+      }
+
+      // Collision & capture checks
       for (const body of SOLAR_SYSTEM) {
         const dx = body.x - r.x, dy = body.y - r.y;
         const dist = Math.sqrt(dx * dx + dy * dy);
@@ -347,11 +429,15 @@ export default function LaunchScreen() {
           setMinedPlanets((prev) => [...prev, body.id]);
           if (Platform.OS !== "web") Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
         }
-        if (body.isEarth && visitedRef.current.size > 0 && dist < body.captureRadius) { endGameRef.current("win"); return; }
+        if (body.isEarth && visitedRef.current.size > 0 && dist < body.captureRadius) {
+          endGameRef.current("win");
+          return;
+        }
       }
 
       if (Math.abs(r.x) > 16000 || Math.abs(r.y) > 16000) { endGameRef.current("lost"); return; }
 
+      // Camera follow (lerp) — only if user isn't panning
       setCam((prev) => {
         const next = { ...prev, x: prev.x + (r.x - prev.x) * 0.06, y: prev.y + (r.y - prev.y) * 0.06 };
         camRef.current = next;
@@ -366,10 +452,17 @@ export default function LaunchScreen() {
   // ── Render values ──────────────────────────────────────────────────────────
   const r = rocketRef.current;
   const trail = trailRef.current;
+  const flightTraj = flightTrajRef.current;
   const rocketScreenPos = phase === "aim" ? w2s(EARTH_BODY.x + IDLE_ORBIT_R, EARTH_BODY.y, cam) : w2s(r.x, r.y, cam);
   const rocketAngle = phase === "flying" ? Math.atan2(r.vy, r.vx) * (180 / Math.PI) + 90 : 0;
   const slingshotPower = slingshotDrag ? Math.round(Math.sqrt(slingshotDrag.dx ** 2 + slingshotDrag.dy ** 2) / MAX_DRAG * 100) : 0;
   const isOver = phase === "win" || phase === "crash" || phase === "lost";
+
+  // Nav data during flight
+  const navTarget = selectedPlanet ?? null;
+  const navDistWu = navTarget
+    ? Math.round(Math.sqrt((navTarget.x - r.x) ** 2 + (navTarget.y - r.y) ** 2))
+    : null;
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
@@ -440,13 +533,26 @@ export default function LaunchScreen() {
         );
       })}
 
-      {/* Trajectory preview */}
-      {trajectoryPoints.map((pt, i) => {
+      {/* Aim trajectory preview */}
+      {phase === "aim" && aimTrajectoryPoints.map((pt, i) => {
         const ts = w2s(pt.x, pt.y, cam);
         return (
           <View key={`tp${i}`} pointerEvents="none" style={{
             position: "absolute", left: ts.x - 3, top: ts.y - 3, width: 6, height: 6, borderRadius: 3,
-            backgroundColor: `rgba(80,200,255,${0.1 + (i / trajectoryPoints.length) * 0.6})`,
+            backgroundColor: `rgba(80,200,255,${0.1 + (i / aimTrajectoryPoints.length) * 0.6})`,
+          }} />
+        );
+      })}
+
+      {/* Live flight trajectory forecast */}
+      {phase === "flying" && flightTraj.map((pt, i) => {
+        const ts = w2s(pt.x, pt.y, cam);
+        if (ts.x < -6 || ts.x > W + 6 || ts.y < -6 || ts.y > H + 6) return null;
+        const frac = i / Math.max(flightTraj.length, 1);
+        return (
+          <View key={`ft${i}`} pointerEvents="none" style={{
+            position: "absolute", left: ts.x - 3, top: ts.y - 3, width: 6, height: 6, borderRadius: 3,
+            backgroundColor: `rgba(120,220,100,${0.08 + frac * 0.55})`,
           }} />
         );
       })}
@@ -479,6 +585,49 @@ export default function LaunchScreen() {
         );
       })()}
 
+      {/* Nav arrows during flight — edge arrows pointing to all unmined planets */}
+      {phase === "flying" && SOLAR_SYSTEM.map((body) => {
+        if (body.isEarth || body.isSun) return null;
+        const isMined = minedPlanets.includes(body.id);
+        const isTarget = selectedId === body.id;
+        const arrow = getEdgeArrow(body.x, body.y, cam);
+        const arrowColor = isTarget ? "#FFD700" : isMined ? "#00D9A3" : body.color;
+        const arrowSize = isTarget ? 18 : 13;
+        return (
+          <View key={`nav${body.id}`} pointerEvents="none" style={{
+            position: "absolute",
+            left: arrow.sx - arrowSize / 2,
+            top: arrow.sy - arrowSize / 2,
+            width: arrowSize,
+            height: arrowSize,
+            alignItems: "center",
+            justifyContent: "center",
+            transform: [{ rotate: `${arrow.angle * 180 / Math.PI + 90}deg` }],
+            opacity: arrow.offScreen ? 0.9 : (isTarget ? 0.6 : 0.35),
+          }}>
+            <Text style={{ fontSize: arrowSize, color: arrowColor, lineHeight: arrowSize + 2 }}>▲</Text>
+          </View>
+        );
+      })}
+
+      {/* Nav arrow for Earth (return home) when gems collected */}
+      {phase === "flying" && minedPlanets.length > 0 && (() => {
+        const arrow = getEdgeArrow(EARTH_BODY.x, EARTH_BODY.y, cam);
+        if (!arrow.offScreen) return null;
+        return (
+          <View key="navEarth" pointerEvents="none" style={{
+            position: "absolute",
+            left: arrow.sx - 11, top: arrow.sy - 11,
+            width: 22, height: 22,
+            alignItems: "center", justifyContent: "center",
+            transform: [{ rotate: `${arrow.angle * 180 / Math.PI + 90}deg` }],
+            opacity: 0.95,
+          }}>
+            <Text style={{ fontSize: 18, lineHeight: 20 }}>🌍</Text>
+          </View>
+        );
+      })()}
+
       {/* Rocket */}
       {phase !== "select" && (
         <View pointerEvents="none" style={{
@@ -498,8 +647,8 @@ export default function LaunchScreen() {
         <Text style={styles.coinBalance}>🪙 {gameData.starCoins.toLocaleString()}</Text>
       </View>
 
-      {/* Zoom buttons */}
-      {(phase === "select" || phase === "flying") && (
+      {/* Zoom buttons — available in all active phases */}
+      {!isOver && (
         <View style={[styles.zoomBtns, { top: topPad + 56 }]} pointerEvents="box-none">
           <TouchableOpacity style={styles.zoomBtn} onPress={() => adjustZoom(true)}>
             <Text style={styles.zoomBtnText}>+</Text>
@@ -546,13 +695,13 @@ export default function LaunchScreen() {
         </View>
       )}
 
-      {/* Aim: slingshot instructions */}
+      {/* Aim: instructions + zoom hint */}
       {phase === "aim" && !isOver && (
         <View style={[styles.aimCard, { paddingBottom: bottomPad + 14 }]} pointerEvents="box-none">
           <Text style={styles.aimTitle}>
             {slingshotDrag
               ? `⚡ Power ${slingshotPower}%  ·  Release to launch!`
-              : "Drag anywhere to aim your slingshot · Release to fire 🚀"}
+              : "Drag anywhere to aim · Use +/− to zoom · Release to fire 🚀"}
           </Text>
           {selectedPlanet && (
             <Text style={styles.aimTarget}>Target: {selectedPlanet.emoji} {selectedPlanet.name}  ·  {selectedPlanet.travelHint}</Text>
@@ -566,21 +715,56 @@ export default function LaunchScreen() {
         </View>
       )}
 
-      {/* Flying: mined gems + return boost */}
+      {/* Flying: nav status bar (bottom-left area) */}
       {phase === "flying" && (
-        <View style={[styles.flyingBar, { paddingBottom: bottomPad + 14 }]} pointerEvents="box-none">
-          {minedPlanets.length > 0 ? (
-            <>
-              <Text style={styles.minedText}>
-                Mined: {minedPlanets.map((id) => SOLAR_SYSTEM.find((b) => b.id === id)?.gem ?? "").join("  ")}
-              </Text>
-              <TouchableOpacity style={styles.returnBtn} onPress={boostTowardEarth} activeOpacity={0.8}>
-                <Text style={styles.returnBtnText}>🌍 Return Home Boost</Text>
-              </TouchableOpacity>
-            </>
+        <View style={[styles.navBar, { bottom: bottomPad + 14 }]} pointerEvents="box-none">
+          {navTarget ? (
+            <View style={styles.navBarInner}>
+              <Text style={styles.navTargetEmoji}>{navTarget.emoji}</Text>
+              <View style={styles.navBarInfo}>
+                <Text style={styles.navBarTitle}>{navTarget.name}</Text>
+                <Text style={styles.navBarSub}>
+                  {navDistWu !== null ? `${navDistWu.toLocaleString()} wu` : "—"}
+                  {"  ·  "}speed {flightSpeed} wu/t
+                </Text>
+              </View>
+              {minedPlanets.length > 0 && (
+                <TouchableOpacity style={styles.returnHomeBtn} onPress={boostTowardEarth} activeOpacity={0.8}>
+                  <Text style={styles.returnHomeBtnText}>🌍 Home</Text>
+                </TouchableOpacity>
+              )}
+            </View>
           ) : (
-            <Text style={styles.flyingHint}>Fly to a planet to mine gems · Return to Earth to win!</Text>
+            <View style={styles.navBarInner}>
+              <Text style={styles.navBarNoTarget}>
+                {minedPlanets.length > 0
+                  ? `${minedPlanets.map((id) => SOLAR_SYSTEM.find((b) => b.id === id)?.gem ?? "").join(" ")}  Mined!`
+                  : `Speed ${flightSpeed} wu/t  ·  Fly to a planet to mine`}
+              </Text>
+              {minedPlanets.length > 0 && (
+                <TouchableOpacity style={styles.returnHomeBtn} onPress={boostTowardEarth} activeOpacity={0.8}>
+                  <Text style={styles.returnHomeBtnText}>🌍 Home</Text>
+                </TouchableOpacity>
+              )}
+            </View>
           )}
+        </View>
+      )}
+
+      {/* Flying: thruster D-pad (bottom-right) */}
+      {phase === "flying" && (
+        <View style={[styles.thrusterPad, { bottom: bottomPad + 14 }]} pointerEvents="box-none">
+          <View style={styles.thrusterRow}>
+            <ThrusterBtn label="▲" onIn={() => addThrust("U")} onOut={() => removeThrust("U")} />
+          </View>
+          <View style={styles.thrusterRow}>
+            <ThrusterBtn label="◀" onIn={() => addThrust("L")} onOut={() => removeThrust("L")} />
+            <View style={styles.thrusterCenter}><Text style={styles.thrusterCenterDot}>✦</Text></View>
+            <ThrusterBtn label="▶" onIn={() => addThrust("R")} onOut={() => removeThrust("R")} />
+          </View>
+          <View style={styles.thrusterRow}>
+            <ThrusterBtn label="▼" onIn={() => addThrust("D")} onOut={() => removeThrust("D")} />
+          </View>
         </View>
       )}
 
@@ -636,6 +820,7 @@ const styles = StyleSheet.create({
   zoomBtns: { position: "absolute", right: 14, gap: 6, zIndex: 20 },
   zoomBtn: { width: 38, height: 38, borderRadius: 10, backgroundColor: "rgba(255,255,255,0.12)", alignItems: "center", justifyContent: "center" },
   zoomBtnText: { color: "#fff", fontSize: 22, fontFamily: "Inter_700Bold", lineHeight: 26 },
+  // Select
   bottomCard: {
     position: "absolute", bottom: 0, left: 14, right: 14,
     backgroundColor: "rgba(8,8,24,0.94)", borderRadius: 20,
@@ -652,6 +837,7 @@ const styles = StyleSheet.create({
   launchMissionBtnOff: { backgroundColor: "rgba(60,60,80,0.6)" },
   launchMissionText: { color: "#fff", fontSize: 14, fontFamily: "Inter_700Bold" },
   selectHint: { color: "#555", fontSize: 13, fontFamily: "Inter_400Regular", textAlign: "center", paddingVertical: 10 },
+  // Aim
   aimCard: {
     position: "absolute", bottom: 0, left: 14, right: 14,
     backgroundColor: "rgba(8,8,24,0.94)", borderRadius: 20,
@@ -662,11 +848,44 @@ const styles = StyleSheet.create({
   aimTarget: { color: "#FFD166", fontSize: 12, fontFamily: "Inter_400Regular" },
   cancelBtn: { backgroundColor: "rgba(255,255,255,0.09)", borderRadius: 10, paddingVertical: 8, paddingHorizontal: 22 },
   cancelBtnText: { color: "#999", fontSize: 13, fontFamily: "Inter_600SemiBold" },
-  flyingBar: { position: "absolute", bottom: 0, left: 14, right: 14, gap: 8, zIndex: 20, alignItems: "center" },
-  flyingHint: { color: "#444", fontSize: 12, fontFamily: "Inter_400Regular", textAlign: "center" },
-  minedText: { color: "#00D9A3", fontSize: 16, fontFamily: "Inter_700Bold", textAlign: "center" },
-  returnBtn: { backgroundColor: "#1B4A2A", borderRadius: 14, paddingVertical: 14, paddingHorizontal: 28, borderWidth: 1, borderColor: "#1B6B3A" },
-  returnBtnText: { color: "#00D9A3", fontSize: 15, fontFamily: "Inter_700Bold" },
+  // Flying: nav bar
+  navBar: {
+    position: "absolute", left: 14, right: 100,
+    backgroundColor: "rgba(6,6,20,0.88)", borderRadius: 14,
+    borderWidth: 1, borderColor: "rgba(100,120,255,0.2)",
+    padding: 10, zIndex: 20,
+  },
+  navBarInner: { flexDirection: "row", alignItems: "center", gap: 8 },
+  navTargetEmoji: { fontSize: 26 },
+  navBarInfo: { flex: 1 },
+  navBarTitle: { color: "#fff", fontSize: 13, fontFamily: "Inter_700Bold" },
+  navBarSub: { color: "#666", fontSize: 11, fontFamily: "Inter_400Regular" },
+  navBarNoTarget: { flex: 1, color: "#555", fontSize: 12, fontFamily: "Inter_400Regular" },
+  returnHomeBtn: {
+    backgroundColor: "#1B4A2A", borderRadius: 10,
+    paddingVertical: 7, paddingHorizontal: 10,
+    borderWidth: 1, borderColor: "#1B6B3A",
+  },
+  returnHomeBtnText: { color: "#00D9A3", fontSize: 11, fontFamily: "Inter_700Bold" },
+  // Flying: thruster pad
+  thrusterPad: {
+    position: "absolute", right: 14,
+    gap: 2, zIndex: 20, alignItems: "center",
+  },
+  thrusterRow: { flexDirection: "row", gap: 2, alignItems: "center", justifyContent: "center" },
+  thrusterBtn: {
+    width: 42, height: 42, borderRadius: 10,
+    backgroundColor: "rgba(80,120,255,0.22)",
+    borderWidth: 1, borderColor: "rgba(80,120,255,0.45)",
+    alignItems: "center", justifyContent: "center",
+  },
+  thrusterBtnText: { color: "#8AB4FF", fontSize: 16, fontFamily: "Inter_700Bold" },
+  thrusterCenter: {
+    width: 42, height: 42, alignItems: "center", justifyContent: "center",
+    opacity: 0.3,
+  },
+  thrusterCenterDot: { color: "#8AB4FF", fontSize: 14 },
+  // Result
   resultOverlay: {
     position: "absolute", bottom: 0, left: 18, right: 18,
     backgroundColor: "rgba(5,5,18,0.97)", borderRadius: 22,
