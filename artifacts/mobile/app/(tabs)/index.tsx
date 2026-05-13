@@ -42,6 +42,7 @@ export default function HomeScreen() {
     { label: "Aquarium", emoji: "🐠", route: "/aquarium" },
     { label: "Zoo", emoji: "🦁", route: "/zoo" },
     { label: "Shop", emoji: "🛒", route: "/shop" },
+    { label: "Settings", emoji: "⚙️", route: "/setup", highlight: true },
     {
       label: "Rocket", emoji: "🚀", route: "/rocket",
       badge: rocketProgress > 0 ? `${rocketProgress}/${rocketTotal}` : undefined,
