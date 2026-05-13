@@ -490,9 +490,20 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     (enabled: boolean) => {
       setSettings((prev) => {
         const next = { ...prev, devUnlimitedMoney: enabled };
-        persist(gameData, next);
+        const nextData = enabled
+          ? { ...gameData, starCoins: Math.max(gameData.starCoins, 100000) }
+          : gameData;
+        persist(nextData, next);
         return next;
       });
+      if (enabled) {
+        setGameData((prev) => {
+          if (prev.starCoins >= 100000) return prev;
+          const next = { ...prev, starCoins: 100000 };
+          persist(next, { ...settingsRef.current, devUnlimitedMoney: true });
+          return next;
+        });
+      }
     },
     [gameData, persist]
   );
