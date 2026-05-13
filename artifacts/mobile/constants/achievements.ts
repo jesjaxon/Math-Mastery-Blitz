@@ -16,6 +16,7 @@ export interface AchievementDef {
   description: string;
   icon: string;
   color: string;
+  bonusPoints: number;
   check: (result: DrillResult) => boolean;
 }
 
@@ -27,6 +28,7 @@ export const ACHIEVEMENTS: AchievementDef[] = [
     description: "Get 5 additions correct in one drill",
     icon: "plus-circle",
     color: "#7C6FFF",
+    bonusPoints: 50,
     check: (r) => (r.correctByOp.add ?? 0) >= 5,
   },
   {
@@ -35,6 +37,7 @@ export const ACHIEVEMENTS: AchievementDef[] = [
     description: "Get 15 additions correct in one drill",
     icon: "plus-circle",
     color: "#7C6FFF",
+    bonusPoints: 150,
     check: (r) => (r.correctByOp.add ?? 0) >= 15,
   },
   {
@@ -43,6 +46,7 @@ export const ACHIEVEMENTS: AchievementDef[] = [
     description: "Get 30 additions correct in one drill",
     icon: "award",
     color: "#FFD166",
+    bonusPoints: 500,
     check: (r) => (r.correctByOp.add ?? 0) >= 30,
   },
   // Subtraction tier
@@ -52,6 +56,7 @@ export const ACHIEVEMENTS: AchievementDef[] = [
     description: "Get 5 subtractions correct in one drill",
     icon: "minus-circle",
     color: "#FF6B9D",
+    bonusPoints: 50,
     check: (r) => (r.correctByOp.sub ?? 0) >= 5,
   },
   {
@@ -60,6 +65,7 @@ export const ACHIEVEMENTS: AchievementDef[] = [
     description: "Get 15 subtractions correct in one drill",
     icon: "minus-circle",
     color: "#FF6B9D",
+    bonusPoints: 150,
     check: (r) => (r.correctByOp.sub ?? 0) >= 15,
   },
   {
@@ -68,6 +74,7 @@ export const ACHIEVEMENTS: AchievementDef[] = [
     description: "Get 30 subtractions correct in one drill",
     icon: "award",
     color: "#FFD166",
+    bonusPoints: 500,
     check: (r) => (r.correctByOp.sub ?? 0) >= 30,
   },
   // Multiplication tier
@@ -77,6 +84,7 @@ export const ACHIEVEMENTS: AchievementDef[] = [
     description: "Get 5 multiplications correct in one drill",
     icon: "x-circle",
     color: "#00D9A3",
+    bonusPoints: 50,
     check: (r) => (r.correctByOp.mul ?? 0) >= 5,
   },
   {
@@ -85,6 +93,7 @@ export const ACHIEVEMENTS: AchievementDef[] = [
     description: "Get 15 multiplications correct in one drill",
     icon: "x-circle",
     color: "#00D9A3",
+    bonusPoints: 150,
     check: (r) => (r.correctByOp.mul ?? 0) >= 15,
   },
   {
@@ -93,6 +102,7 @@ export const ACHIEVEMENTS: AchievementDef[] = [
     description: "Get 30 multiplications correct in one drill",
     icon: "award",
     color: "#FFD166",
+    bonusPoints: 500,
     check: (r) => (r.correctByOp.mul ?? 0) >= 30,
   },
   // Division tier
@@ -102,6 +112,7 @@ export const ACHIEVEMENTS: AchievementDef[] = [
     description: "Get 5 divisions correct in one drill",
     icon: "circle",
     color: "#FF9F43",
+    bonusPoints: 50,
     check: (r) => (r.correctByOp.div ?? 0) >= 5,
   },
   {
@@ -110,6 +121,7 @@ export const ACHIEVEMENTS: AchievementDef[] = [
     description: "Get 15 divisions correct in one drill",
     icon: "circle",
     color: "#FF9F43",
+    bonusPoints: 150,
     check: (r) => (r.correctByOp.div ?? 0) >= 15,
   },
   {
@@ -118,6 +130,7 @@ export const ACHIEVEMENTS: AchievementDef[] = [
     description: "Get 30 divisions correct in one drill",
     icon: "award",
     color: "#FFD166",
+    bonusPoints: 500,
     check: (r) => (r.correctByOp.div ?? 0) >= 30,
   },
   // Score milestones
@@ -127,6 +140,7 @@ export const ACHIEVEMENTS: AchievementDef[] = [
     description: "Score 10 correct in one drill",
     icon: "target",
     color: "#7C6FFF",
+    bonusPoints: 100,
     check: (r) => r.score >= 10,
   },
   {
@@ -135,6 +149,7 @@ export const ACHIEVEMENTS: AchievementDef[] = [
     description: "Score 25 correct in one drill",
     icon: "target",
     color: "#00D9A3",
+    bonusPoints: 250,
     check: (r) => r.score >= 25,
   },
   {
@@ -143,6 +158,7 @@ export const ACHIEVEMENTS: AchievementDef[] = [
     description: "Score 50 correct in one drill",
     icon: "zap",
     color: "#FFD166",
+    bonusPoints: 1000,
     check: (r) => r.score >= 50,
   },
   // Streak
@@ -152,6 +168,7 @@ export const ACHIEVEMENTS: AchievementDef[] = [
     description: "Answer 5 in a row without a wrong key",
     icon: "trending-up",
     color: "#7C6FFF",
+    bonusPoints: 75,
     check: (r) => r.maxStreak >= 5,
   },
   {
@@ -160,6 +177,7 @@ export const ACHIEVEMENTS: AchievementDef[] = [
     description: "Answer 10 in a row without a wrong key",
     icon: "trending-up",
     color: "#00D9A3",
+    bonusPoints: 200,
     check: (r) => r.maxStreak >= 10,
   },
   {
@@ -168,6 +186,7 @@ export const ACHIEVEMENTS: AchievementDef[] = [
     description: "Answer 20 in a row without a wrong key",
     icon: "zap",
     color: "#FFD166",
+    bonusPoints: 500,
     check: (r) => r.maxStreak >= 20,
   },
   // Special
@@ -177,6 +196,7 @@ export const ACHIEVEMENTS: AchievementDef[] = [
     description: "Complete a drill using all 4 operations",
     icon: "star",
     color: "#FFD166",
+    bonusPoints: 300,
     check: (r) =>
       r.operations.includes("add") &&
       r.operations.includes("sub") &&
@@ -189,6 +209,7 @@ export const ACHIEVEMENTS: AchievementDef[] = [
     description: "Score 20 correct in 30 seconds",
     icon: "clock",
     color: "#FF6B9D",
+    bonusPoints: 400,
     check: (r) => r.score >= 20 && r.timeLimit <= 30,
   },
 ];

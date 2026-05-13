@@ -41,6 +41,11 @@ export default function HomeScreen() {
   const totalGames = gameData.totalGames;
   const bestScore = gameData.allTimeBest;
   const achievementCount = Object.keys(gameData.unlockedAchievements).length;
+  const unclaimedCount = Object.keys(gameData.unclaimedBonuses).length;
+  const totalUnclaimed = Object.values(gameData.unclaimedBonuses).reduce(
+    (s, v) => s + v,
+    0
+  );
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
@@ -56,48 +61,101 @@ export default function HomeScreen() {
           <Text style={[styles.appTitle, { color: colors.primary }]}>
             Math Minute
           </Text>
-          <Text style={[styles.appSubtitle, { color: colors.mutedForeground }]}>
+          <Text
+            style={[styles.appSubtitle, { color: colors.mutedForeground }]}
+          >
             How fast can you go?
           </Text>
         </View>
+
+        {/* Points banner */}
+        {isLoaded && (
+          <View
+            style={[
+              styles.pointsBanner,
+              {
+                backgroundColor: colors.card,
+                borderColor: colors.gold + "55",
+              },
+            ]}
+          >
+            <Text style={[styles.pointsLabel, { color: colors.mutedForeground }]}>
+              ⭐ Points
+            </Text>
+            <Text style={[styles.pointsValue, { color: colors.gold }]}>
+              {gameData.points.toLocaleString()}
+            </Text>
+            {unclaimedCount > 0 && (
+              <TouchableOpacity
+                style={[
+                  styles.claimBanner,
+                  { backgroundColor: colors.gold + "22" },
+                ]}
+                onPress={() => router.push("/achievements")}
+              >
+                <Text style={[styles.claimBannerText, { color: colors.gold }]}>
+                  +{totalUnclaimed} unclaimed!
+                </Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        )}
 
         {/* Stats Row */}
         {isLoaded && totalGames > 0 && (
           <View style={styles.statsRow}>
             <View
-              style={[styles.statCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+              style={[
+                styles.statCard,
+                {
+                  backgroundColor: colors.card,
+                  borderColor: colors.border,
+                },
+              ]}
             >
               <Text style={[styles.statValue, { color: colors.primary }]}>
                 {bestScore}
               </Text>
-              <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>
+              <Text
+                style={[styles.statLabel, { color: colors.mutedForeground }]}
+              >
                 Best Score
               </Text>
             </View>
             <View
-              style={[styles.statCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+              style={[
+                styles.statCard,
+                { backgroundColor: colors.card, borderColor: colors.border },
+              ]}
             >
               <Text style={[styles.statValue, { color: colors.accent }]}>
                 {totalGames}
               </Text>
-              <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>
+              <Text
+                style={[styles.statLabel, { color: colors.mutedForeground }]}
+              >
                 Drills
               </Text>
             </View>
             <View
-              style={[styles.statCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+              style={[
+                styles.statCard,
+                { backgroundColor: colors.card, borderColor: colors.border },
+              ]}
             >
               <Text style={[styles.statValue, { color: colors.gold }]}>
                 {achievementCount}
               </Text>
-              <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>
+              <Text
+                style={[styles.statLabel, { color: colors.mutedForeground }]}
+              >
                 Badges
               </Text>
             </View>
           </View>
         )}
 
-        {/* Operation Stats */}
+        {/* Operation bests */}
         {isLoaded && totalGames > 0 && (
           <View style={styles.opsGrid}>
             {ops.map((op) => {
@@ -121,7 +179,9 @@ export default function HomeScreen() {
                   <Text style={[styles.opBest, { color: colors.foreground }]}>
                     {stat.bestDrillScore}
                   </Text>
-                  <Text style={[styles.opLabel, { color: colors.mutedForeground }]}>
+                  <Text
+                    style={[styles.opLabel, { color: colors.mutedForeground }]}
+                  >
                     best
                   </Text>
                 </View>
@@ -130,38 +190,74 @@ export default function HomeScreen() {
           </View>
         )}
 
-        {/* CTA */}
-        <View style={styles.ctaSection}>
+        {/* Primary CTA */}
+        <TouchableOpacity
+          style={[styles.startBtn, { backgroundColor: colors.primary }]}
+          onPress={() => router.push("/setup")}
+          activeOpacity={0.82}
+        >
+          <Feather name="play" size={24} color="#fff" />
+          <Text style={styles.startBtnText}>Start Drill</Text>
+        </TouchableOpacity>
+
+        {/* Secondary nav grid */}
+        <View style={styles.navGrid}>
           <TouchableOpacity
-            style={[styles.startBtn, { backgroundColor: colors.primary }]}
-            onPress={() => router.push("/setup")}
+            style={[
+              styles.navCard,
+              { backgroundColor: colors.card, borderColor: colors.border },
+            ]}
+            onPress={() => router.push("/classroom")}
             activeOpacity={0.82}
           >
-            <Feather name="play" size={24} color="#fff" />
-            <Text style={styles.startBtnText}>Start Drill</Text>
+            <Text style={styles.navCardEmoji}>🏫</Text>
+            <Text style={[styles.navCardLabel, { color: colors.foreground }]}>
+              Classroom
+            </Text>
           </TouchableOpacity>
 
           <TouchableOpacity
             style={[
-              styles.secondaryBtn,
+              styles.navCard,
               { backgroundColor: colors.card, borderColor: colors.border },
+            ]}
+            onPress={() => router.push("/shop")}
+            activeOpacity={0.82}
+          >
+            <Text style={styles.navCardEmoji}>🛒</Text>
+            <Text style={[styles.navCardLabel, { color: colors.foreground }]}>
+              Shop
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[
+              styles.navCard,
+              {
+                backgroundColor: colors.card,
+                borderColor:
+                  unclaimedCount > 0 ? colors.gold + "88" : colors.border,
+                borderWidth: unclaimedCount > 0 ? 1.5 : 1,
+              },
             ]}
             onPress={() => router.push("/achievements")}
             activeOpacity={0.82}
           >
-            <Feather name="award" size={20} color={colors.gold} />
-            <Text style={[styles.secondaryBtnText, { color: colors.foreground }]}>
-              Achievements
+            <View style={styles.navCardIconWrap}>
+              <Text style={styles.navCardEmoji}>🏆</Text>
+              {unclaimedCount > 0 && (
+                <View
+                  style={[styles.notifDot, { backgroundColor: colors.gold }]}
+                />
+              )}
+            </View>
+            <Text style={[styles.navCardLabel, { color: colors.foreground }]}>
+              Badges
             </Text>
-            {achievementCount > 0 && (
-              <View style={[styles.badge, { backgroundColor: colors.gold }]}>
-                <Text style={styles.badgeText}>{achievementCount}</Text>
-              </View>
-            )}
           </TouchableOpacity>
         </View>
 
-        {/* Welcome msg for first time */}
+        {/* Welcome msg */}
         {isLoaded && totalGames === 0 && (
           <View
             style={[
@@ -170,9 +266,11 @@ export default function HomeScreen() {
             ]}
           >
             <Feather name="info" size={18} color={colors.mutedForeground} />
-            <Text style={[styles.welcomeText, { color: colors.mutedForeground }]}>
-              Pick your operations, set a time limit, and answer as many questions
-              as you can. Correct answers auto-submit instantly.
+            <Text
+              style={[styles.welcomeText, { color: colors.mutedForeground }]}
+            >
+              Pick your operations, set a time limit, and answer as many
+              questions as you can. Earn points to decorate your classroom!
             </Text>
           </View>
         )}
@@ -183,8 +281,8 @@ export default function HomeScreen() {
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
-  scroll: { paddingHorizontal: 20, gap: 20 },
-  header: { alignItems: "center", paddingVertical: 12 },
+  scroll: { paddingHorizontal: 20, gap: 16 },
+  header: { alignItems: "center", paddingVertical: 8 },
   appTitle: {
     fontSize: 42,
     fontFamily: "Inter_700Bold",
@@ -195,10 +293,34 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_400Regular",
     marginTop: 4,
   },
-  statsRow: {
+  pointsBanner: {
+    borderRadius: 16,
+    paddingHorizontal: 18,
+    paddingVertical: 12,
     flexDirection: "row",
+    alignItems: "center",
+    borderWidth: 1.5,
     gap: 10,
   },
+  pointsLabel: {
+    fontSize: 14,
+    fontFamily: "Inter_500Medium",
+  },
+  pointsValue: {
+    fontSize: 24,
+    fontFamily: "Inter_700Bold",
+    flex: 1,
+  },
+  claimBanner: {
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  claimBannerText: {
+    fontSize: 13,
+    fontFamily: "Inter_700Bold",
+  },
+  statsRow: { flexDirection: "row", gap: 10 },
   statCard: {
     flex: 1,
     borderRadius: 16,
@@ -206,10 +328,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     borderWidth: 1,
   },
-  statValue: {
-    fontSize: 28,
-    fontFamily: "Inter_700Bold",
-  },
+  statValue: { fontSize: 28, fontFamily: "Inter_700Bold" },
   statLabel: {
     fontSize: 11,
     fontFamily: "Inter_500Medium",
@@ -217,10 +336,7 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
     letterSpacing: 0.5,
   },
-  opsGrid: {
-    flexDirection: "row",
-    gap: 10,
-  },
+  opsGrid: { flexDirection: "row", gap: 10 },
   opCard: {
     flex: 1,
     borderRadius: 14,
@@ -228,21 +344,14 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 2,
   },
-  opSymbol: {
-    fontSize: 22,
-    fontFamily: "Inter_700Bold",
-  },
-  opBest: {
-    fontSize: 18,
-    fontFamily: "Inter_700Bold",
-  },
+  opSymbol: { fontSize: 22, fontFamily: "Inter_700Bold" },
+  opBest: { fontSize: 18, fontFamily: "Inter_700Bold" },
   opLabel: {
     fontSize: 10,
     fontFamily: "Inter_400Regular",
     textTransform: "uppercase",
     letterSpacing: 0.5,
   },
-  ctaSection: { gap: 12 },
   startBtn: {
     borderRadius: 18,
     paddingVertical: 18,
@@ -251,34 +360,30 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: 10,
   },
-  startBtnText: {
-    fontSize: 20,
-    fontFamily: "Inter_700Bold",
-    color: "#fff",
-  },
-  secondaryBtn: {
+  startBtnText: { fontSize: 20, fontFamily: "Inter_700Bold", color: "#fff" },
+  navGrid: { flexDirection: "row", gap: 10 },
+  navCard: {
+    flex: 1,
     borderRadius: 16,
-    paddingVertical: 15,
-    flexDirection: "row",
+    paddingVertical: 18,
     alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
+    gap: 6,
     borderWidth: 1,
   },
-  secondaryBtnText: {
-    fontSize: 16,
+  navCardEmoji: { fontSize: 28 },
+  navCardLabel: {
+    fontSize: 12,
     fontFamily: "Inter_600SemiBold",
+    textAlign: "center",
   },
-  badge: {
-    borderRadius: 10,
-    paddingHorizontal: 7,
-    paddingVertical: 2,
-    marginLeft: 4,
-  },
-  badgeText: {
-    fontSize: 11,
-    fontFamily: "Inter_700Bold",
-    color: "#000",
+  navCardIconWrap: { position: "relative" },
+  notifDot: {
+    position: "absolute",
+    top: -2,
+    right: -6,
+    width: 10,
+    height: 10,
+    borderRadius: 5,
   },
   welcomeCard: {
     borderRadius: 14,

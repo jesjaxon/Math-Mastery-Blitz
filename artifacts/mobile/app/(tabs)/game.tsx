@@ -33,7 +33,9 @@ export default function GameScreen() {
   const [timeLeft, setTimeLeft] = useState(settings.timeLimit);
   const [streak, setStreak] = useState(0);
   const [maxStreak, setMaxStreak] = useState(0);
-  const [correctByOp, setCorrectByOp] = useState<Partial<Record<Operation, number>>>({});
+  const [correctByOp, setCorrectByOp] = useState<
+    Partial<Record<Operation, number>>
+  >({});
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [gameOver, setGameOver] = useState(false);
 
@@ -53,7 +55,9 @@ export default function GameScreen() {
 
   const handleCorrect = useCallback(() => {
     if (Platform.OS !== "web") {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      Haptics.notificationAsync(
+        Haptics.NotificationFeedbackType.Success
+      ).catch(() => {});
     }
 
     const newScore = scoreRef.current + 1;
@@ -76,13 +80,29 @@ export default function GameScreen() {
     setIsTransitioning(true);
 
     Animated.sequence([
-      Animated.timing(flashAnim, { toValue: 1, duration: 80, useNativeDriver: false }),
-      Animated.timing(flashAnim, { toValue: 0, duration: 220, useNativeDriver: false }),
+      Animated.timing(flashAnim, {
+        toValue: 1,
+        duration: 80,
+        useNativeDriver: false,
+      }),
+      Animated.timing(flashAnim, {
+        toValue: 0,
+        duration: 220,
+        useNativeDriver: false,
+      }),
     ]).start();
 
     Animated.sequence([
-      Animated.timing(scaleAnim, { toValue: 1.12, duration: 80, useNativeDriver: true }),
-      Animated.timing(scaleAnim, { toValue: 1, duration: 150, useNativeDriver: true }),
+      Animated.timing(scaleAnim, {
+        toValue: 1.12,
+        duration: 80,
+        useNativeDriver: true,
+      }),
+      Animated.timing(scaleAnim, {
+        toValue: 1,
+        duration: 150,
+        useNativeDriver: true,
+      }),
     ]).start();
 
     setTimeout(nextQuestion, 300);
@@ -96,10 +116,26 @@ export default function GameScreen() {
     setStreak(0);
 
     Animated.sequence([
-      Animated.timing(shakeAnim, { toValue: 8, duration: 50, useNativeDriver: true }),
-      Animated.timing(shakeAnim, { toValue: -8, duration: 50, useNativeDriver: true }),
-      Animated.timing(shakeAnim, { toValue: 6, duration: 50, useNativeDriver: true }),
-      Animated.timing(shakeAnim, { toValue: 0, duration: 50, useNativeDriver: true }),
+      Animated.timing(shakeAnim, {
+        toValue: 8,
+        duration: 50,
+        useNativeDriver: true,
+      }),
+      Animated.timing(shakeAnim, {
+        toValue: -8,
+        duration: 50,
+        useNativeDriver: true,
+      }),
+      Animated.timing(shakeAnim, {
+        toValue: 6,
+        duration: 50,
+        useNativeDriver: true,
+      }),
+      Animated.timing(shakeAnim, {
+        toValue: 0,
+        duration: 50,
+        useNativeDriver: true,
+      }),
     ]).start();
   }, [shakeAnim]);
 
@@ -113,7 +149,6 @@ export default function GameScreen() {
       }
 
       const newInput = input + key;
-
       if (newInput.length > 3) return;
 
       setInput(newInput);
@@ -144,8 +179,8 @@ export default function GameScreen() {
           timeLimit: settings.timeLimit,
           difficulty: settings.difficulty,
         };
-        const newAchievements = saveSession(result);
-        setLastSession({ ...result, newAchievements } as any);
+        const { newAchievements, pointsEarned } = saveSession(result);
+        setLastSession({ ...result, newAchievements, pointsEarned });
         router.replace("/results");
       } else {
         setTimeLeft((t) => t - 1);
@@ -180,7 +215,6 @@ export default function GameScreen() {
     <Animated.View
       style={[styles.root, { backgroundColor: flashBg, paddingTop: topPad }]}
     >
-      {/* Timer section */}
       <View style={styles.topBar}>
         <TimerBar timeLeft={timeLeft} totalTime={settings.timeLimit} />
         <View style={styles.topRow}>
@@ -196,7 +230,12 @@ export default function GameScreen() {
             {score}
           </Animated.Text>
           {streak >= 3 && (
-            <View style={[styles.streakBadge, { backgroundColor: colors.gold + "22" }]}>
+            <View
+              style={[
+                styles.streakBadge,
+                { backgroundColor: colors.gold + "22" },
+              ]}
+            >
               <Text style={[styles.streakText, { color: colors.gold }]}>
                 🔥 {streak}
               </Text>
@@ -205,15 +244,15 @@ export default function GameScreen() {
         </View>
       </View>
 
-      {/* Question */}
       <View style={styles.questionArea}>
         <Text style={[styles.questionText, { color: colors.foreground }]}>
           {question.display}
         </Text>
-        <Text style={[styles.equalsText, { color: colors.mutedForeground }]}>= ?</Text>
+        <Text style={[styles.equalsText, { color: colors.mutedForeground }]}>
+          = ?
+        </Text>
       </View>
 
-      {/* Answer Input */}
       <Animated.View
         style={[
           styles.inputBox,
@@ -227,21 +266,20 @@ export default function GameScreen() {
         <Text
           style={[
             styles.inputText,
-            {
-              color: input ? colors.foreground : colors.mutedForeground,
-            },
+            { color: input ? colors.foreground : colors.mutedForeground },
           ]}
         >
           {input || "—"}
         </Text>
       </Animated.View>
 
-      {/* Number Pad */}
       <View style={[styles.padArea, { paddingBottom: bottomPad + 12 }]}>
-        <NumberPad onPress={handleKeyPress} disabled={isTransitioning || gameOver} />
+        <NumberPad
+          onPress={handleKeyPress}
+          disabled={isTransitioning || gameOver}
+        />
       </View>
 
-      {/* Quit */}
       <TouchableOpacity
         style={styles.quitBtn}
         onPress={() => router.replace("/")}
@@ -263,15 +301,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
   },
-  timerText: {
-    fontSize: 16,
-    fontFamily: "Inter_500Medium",
-    minWidth: 48,
-  },
-  scoreText: {
-    fontSize: 48,
-    fontFamily: "Inter_700Bold",
-  },
+  timerText: { fontSize: 16, fontFamily: "Inter_500Medium", minWidth: 48 },
+  scoreText: { fontSize: 48, fontFamily: "Inter_700Bold" },
   streakBadge: {
     borderRadius: 12,
     paddingHorizontal: 10,
@@ -279,10 +310,7 @@ const styles = StyleSheet.create({
     minWidth: 56,
     alignItems: "center",
   },
-  streakText: {
-    fontSize: 14,
-    fontFamily: "Inter_600SemiBold",
-  },
+  streakText: { fontSize: 14, fontFamily: "Inter_600SemiBold" },
   questionArea: {
     flex: 1,
     alignItems: "center",
@@ -295,10 +323,7 @@ const styles = StyleSheet.create({
     textAlign: "center",
     letterSpacing: -1,
   },
-  equalsText: {
-    fontSize: 28,
-    fontFamily: "Inter_500Medium",
-  },
+  equalsText: { fontSize: 28, fontFamily: "Inter_500Medium" },
   inputBox: {
     borderRadius: 20,
     borderWidth: 2,
@@ -315,14 +340,6 @@ const styles = StyleSheet.create({
     letterSpacing: 4,
   },
   padArea: { paddingTop: 4 },
-  quitBtn: {
-    position: "absolute",
-    top: 12,
-    left: 20,
-    padding: 4,
-  },
-  quitText: {
-    fontSize: 14,
-    fontFamily: "Inter_500Medium",
-  },
+  quitBtn: { position: "absolute", top: 12, left: 20, padding: 4 },
+  quitText: { fontSize: 14, fontFamily: "Inter_500Medium" },
 });
