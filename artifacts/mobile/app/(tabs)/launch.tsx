@@ -53,6 +53,7 @@ interface RocketState {
   vx: number; vy: number;
   trail: Array<{ x: number; y: number }>;
   visited: Set<string>;
+  inZone: Set<string>;
   minedIds: string[];
   status: RocketStatus;
   flightTraj: Array<{ x: number; y: number }>;
@@ -252,7 +253,7 @@ export default function LaunchScreen() {
   const makeRocket = useCallback((x: number, y: number, vx: number, vy: number): RocketState => ({
     id: nextIdRef.current++,
     x, y, vx, vy,
-    trail: [], visited: new Set(), minedIds: [],
+    trail: [], visited: new Set(), inZone: new Set(), minedIds: [],
     status: "flying", flightTraj: [], tickCount: 0,
   }), []);
 
@@ -308,7 +309,9 @@ export default function LaunchScreen() {
     const next: Cam = { x: rocket.x, y: rocket.y, zoom: startZoom };
     setCam(next); camRef.current = next;
 
-    startLoop();
+    // Only start the loop if it isn't already running — the existing interval
+    // will pick up the new rocket from rocketsRef automatically on the next tick.
+    if (!gameLoopRef.current) startLoop();
     if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy).catch(() => {});
   }, [makeRocket, startLoop]);
 
@@ -336,7 +339,7 @@ export default function LaunchScreen() {
     const next: Cam = { x: rocket.x, y: rocket.y, zoom: startZoom };
     setCam(next); camRef.current = next;
 
-    startLoop();
+    if (!gameLoopRef.current) startLoop();
     if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy).catch(() => {});
   }, [selectedPlanet, canAfford, spendStarCoins, makeRocket, startLoop]);
 
@@ -531,10 +534,17 @@ export default function LaunchScreen() {
           const dx = body.x - r.x, dy = body.y - r.y;
           const dist = Math.sqrt(dx * dx + dy * dy);
           if (dist < body.radius + 5) { finishRocketRef.current(idx, "crash"); done = true; break; }
-          if (!body.isEarth && !body.isSun && body.gem && !r.visited.has(body.id) && dist < body.captureRadius) {
-            r.visited.add(body.id);
-            r.minedIds.push(body.id);
-            if (Platform.OS !== "web") Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+          if (!body.isEarth && !body.isSun && body.gem) {
+            const inside = dist < body.captureRadius;
+            const wasInside = r.inZone.has(body.id);
+            if (inside && !wasInside) {
+              r.inZone.add(body.id);
+              r.visited.add(body.id);
+              r.minedIds.push(body.id);
+              if (Platform.OS !== "web") Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+            } else if (!inside && wasInside) {
+              r.inZone.delete(body.id);
+            }
           }
           if (body.isEarth && r.visited.size > 0 && dist < body.captureRadius) {
             finishRocketRef.current(idx, "win"); done = true; break;
