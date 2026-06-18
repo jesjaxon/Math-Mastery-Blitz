@@ -1,8 +1,13 @@
 uploads = []
-outputs = []
 
 [[generated]]
 id = "NMwbYNGe5b8V1KMhh1dg-"
 uri = "file://artifacts/mobile/assets/images/icon.png"
 type = "image"
 title = "math drills app icon"
+
+[[outputs]]
+id = "WWq5e2dHeKjQBumV-_SxZ"
+uri = "file://MathMinuteDrills-ios.tar.gz"
+type = "unspecified"
+title = "MathMinuteDrills iOS Xcode Project"
