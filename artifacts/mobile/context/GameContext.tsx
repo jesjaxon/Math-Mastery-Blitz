@@ -49,6 +49,7 @@ export interface GameData {
   rocketPartsOwned: string[];
   launchComplete: boolean;
   planetGems: Record<string, number>;
+  craftedInventions: string[];
   totalGames: number;
   allTimeBest: number;
 }
@@ -89,6 +90,7 @@ const DEFAULT_DATA: GameData = {
   rocketPartsOwned: [],
   launchComplete: false,
   planetGems: {},
+  craftedInventions: [],
   totalGames: 0,
   allTimeBest: 0,
 };
@@ -100,6 +102,8 @@ function getPassiveRate(data: GameData): number {
     require("@/constants/aquariumAnimals") as typeof import("@/constants/aquariumAnimals");
   const { ZOO_ANIMALS } =
     require("@/constants/zooAnimals") as typeof import("@/constants/zooAnimals");
+  const { INVENTIONS } =
+    require("@/constants/inventions") as typeof import("@/constants/inventions");
 
   let rate = 0;
   for (const itemId of Object.values(data.equippedItems)) {
@@ -114,11 +118,33 @@ function getPassiveRate(data: GameData): number {
     const a = ZOO_ANIMALS.find((x) => x.id === id);
     if (a?.starCoinsPerHour) rate += a.starCoinsPerHour;
   }
+  for (const id of (data.craftedInventions ?? [])) {
+    const inv = INVENTIONS.find((i) => i.id === id);
+    if (inv?.effect.starCoinsPerHour) rate += inv.effect.starCoinsPerHour;
+  }
   return rate;
 }
 
-function calculateDrillPoints(score: number): number {
-  return score;
+function getDrillMultiplier(data: GameData): number {
+  const { INVENTIONS } =
+    require("@/constants/inventions") as typeof import("@/constants/inventions");
+  let mult = 1;
+  for (const id of (data.craftedInventions ?? [])) {
+    const inv = INVENTIONS.find((i) => i.id === id);
+    if (inv?.effect.multiplier) mult *= inv.effect.multiplier;
+  }
+  return mult;
+}
+
+function getDrillCoinBonus(data: GameData): number {
+  const { INVENTIONS } =
+    require("@/constants/inventions") as typeof import("@/constants/inventions");
+  let bonus = 0;
+  for (const id of (data.craftedInventions ?? [])) {
+    const inv = INVENTIONS.find((i) => i.id === id);
+    if (inv?.effect.coinsPerAnswer) bonus += inv.effect.coinsPerAnswer;
+  }
+  return bonus;
 }
 
 function createDefaultGameData(): GameData {
@@ -145,7 +171,10 @@ interface GameContextType {
   addPlanetGem: (planetId: string) => void;
   spendStarCoins: (amount: number) => boolean;
   unlockAchievement: (id: string) => void;
+  craftInvention: (id: string) => boolean;
   getPassiveRate: () => number;
+  getDrillMultiplier: () => number;
+  getDrillCoinBonus: () => number;
   getLevel: (points: number) => number;
   resetGameProgress: () => void;
   resetAchievements: () => void;
@@ -254,13 +283,17 @@ export function GameProvider({
 
   const saveSession = useCallback(
     (result: DrillResult): SaveSessionResult => {
-      const pointsEarned = calculateDrillPoints(result.score);
       const newlyUnlocked: string[] = [];
       let starCoinsEarned = 0;
+      let pointsEarned = 0;
 
       setGameData((prev) => {
+        const multiplier = getDrillMultiplier(prev);
+        const coinBonus = getDrillCoinBonus(prev);
+        pointsEarned = Math.round(result.score * multiplier);
         const rate = getPassiveRate(prev);
-        starCoinsEarned = Math.floor((result.durationSeconds / 3600) * rate);
+        const passiveCoins = Math.floor((result.durationSeconds / 3600) * rate);
+        starCoinsEarned = passiveCoins + coinBonus * result.score;
 
         let next: GameData = {
           ...prev,
@@ -482,6 +515,37 @@ export function GameProvider({
     [persist]
   );
 
+  const craftInvention = useCallback(
+    (inventionId: string): boolean => {
+      let success = false;
+      setGameData((prev) => {
+        const { INVENTIONS } =
+          require("@/constants/inventions") as typeof import("@/constants/inventions");
+        const invention = INVENTIONS.find((i) => i.id === inventionId);
+        if (!invention) return prev;
+        if ((prev.craftedInventions ?? []).includes(inventionId)) return prev;
+        if (getLevel(prev.points) < invention.levelRequired) return prev;
+        for (const [planetId, needed] of Object.entries(invention.recipe)) {
+          if ((prev.planetGems[planetId] ?? 0) < (needed as number)) return prev;
+        }
+        const newGems = { ...prev.planetGems };
+        for (const [planetId, needed] of Object.entries(invention.recipe)) {
+          newGems[planetId] = (newGems[planetId] ?? 0) - (needed as number);
+        }
+        success = true;
+        const next: GameData = {
+          ...prev,
+          planetGems: newGems,
+          craftedInventions: [...(prev.craftedInventions ?? []), inventionId],
+        };
+        persist(next, settingsRef.current);
+        return next;
+      });
+      return success;
+    },
+    [persist]
+  );
+
   const unlockAchievement = useCallback(
     (id: string) => {
       const ach = ACHIEVEMENTS.find((a) => a.id === id);
@@ -543,6 +607,8 @@ export function GameProvider({
   );
 
   const getRate = useCallback(() => getPassiveRate(gameData), [gameData]);
+  const getDrillMultiplierCallback = useCallback(() => getDrillMultiplier(gameData), [gameData]);
+  const getDrillCoinBonusCallback = useCallback(() => getDrillCoinBonus(gameData), [gameData]);
 
   return (
     <GameContext.Provider
@@ -563,7 +629,10 @@ export function GameProvider({
         addPlanetGem,
         spendStarCoins,
         unlockAchievement,
+        craftInvention,
         getPassiveRate: getRate,
+        getDrillMultiplier: getDrillMultiplierCallback,
+        getDrillCoinBonus: getDrillCoinBonusCallback,
         getLevel,
         resetGameProgress,
         resetAchievements,

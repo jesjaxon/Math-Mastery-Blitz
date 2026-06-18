@@ -27,7 +27,7 @@ const OP_COLORS: Record<Operation, string> = {
 export default function ResultsScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { lastSession, gameData, getLevel } = useGame();
+  const { lastSession, gameData, getLevel, getDrillMultiplier, getDrillCoinBonus } = useGame();
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const bottomPad = Platform.OS === "web" ? 34 : insets.bottom;
@@ -84,6 +84,10 @@ export default function ResultsScreen() {
   const newAchievements = ACHIEVEMENTS.filter((a) =>
     newAchievementIds.includes(a.id)
   );
+
+  const drillMultiplier = getDrillMultiplier();
+  const drillCoinBonus = getDrillCoinBonus();
+  const hasInventionBonus = drillMultiplier > 1 || drillCoinBonus > 0;
 
   const isPersonalBest = score > 0 && score >= gameData.allTimeBest;
   const totalBonusAvail = newAchievements.reduce(
@@ -209,6 +213,18 @@ export default function ResultsScreen() {
               </Text>
             </View>
           </View>
+
+          {/* Invention bonus line */}
+          {hasInventionBonus && (
+            <View style={[styles.inventionBonusRow, { backgroundColor: "#9C27B011", borderColor: "#9C27B044" }]}>
+              <Text style={[styles.inventionBonusText, { color: "#CE93D8" }]}>
+                ⚗️{drillMultiplier > 1 ? ` ×${drillMultiplier.toFixed(2)} multiplier` : ""}
+                {drillMultiplier > 1 && drillCoinBonus > 0 ? "  ·" : ""}
+                {drillCoinBonus > 0 ? `  +${drillCoinBonus} 🪙/answer` : ""}
+                {" "}invention bonus active
+              </Text>
+            </View>
+          )}
 
           {/* Stats Row */}
           <View style={styles.statsRow}>
@@ -536,4 +552,13 @@ const styles = StyleSheet.create({
     alignSelf: "center",
   },
   homeBtnText: { color: "#fff", fontSize: 17, fontFamily: "Inter_700Bold" },
+  inventionBonusRow: {
+    width: "100%",
+    borderRadius: 12,
+    borderWidth: 1,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    alignItems: "center",
+  },
+  inventionBonusText: { fontSize: 13, fontFamily: "Inter_600SemiBold", textAlign: "center" },
 });

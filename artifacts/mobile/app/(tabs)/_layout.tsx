@@ -23,6 +23,7 @@ export default function GameStackLayout() {
       <Stack.Screen name="zoo" />
       <Stack.Screen name="rocket" />
       <Stack.Screen name="launch" options={{ animation: "fade", gestureEnabled: false }} />
+      <Stack.Screen name="workshop" />
       <Stack.Screen name="profiles" options={{ animation: "slide_from_bottom" }} />
     </Stack>
   );
