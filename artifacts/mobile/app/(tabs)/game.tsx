@@ -46,7 +46,7 @@ export default function GameScreen() {
   const streakRef = useRef(0);
   const maxStreakRef = useRef(0);
   const correctByOpRef = useRef<Partial<Record<Operation, number>>>({});
-  const startTimeRef = useRef(Date.now());
+  const elapsedSecondsRef = useRef(0);
 
   const nextQuestion = useCallback(() => {
     setQuestion(generateQuestion(settings.operations, settings.difficulty));
@@ -170,9 +170,9 @@ export default function GameScreen() {
   useEffect(() => {
     if (timeLeft <= 0 || gameOver) return;
     const timer = setTimeout(() => {
+      elapsedSecondsRef.current += 1;
       if (timeLeft === 1) {
         setGameOver(true);
-        const durationSeconds = Math.round((Date.now() - startTimeRef.current) / 1000);
         const result = {
           score: scoreRef.current,
           correctByOp: correctByOpRef.current,
@@ -181,7 +181,7 @@ export default function GameScreen() {
           timeLimit: settings.timeLimit,
           difficulty: settings.difficulty,
           totalGames: 0,
-          durationSeconds,
+          durationSeconds: elapsedSecondsRef.current,
         };
         const { newAchievements, pointsEarned, starCoinsEarned } = saveSession(result);
         setLastSession({ ...result, newAchievements, pointsEarned, starCoinsEarned });

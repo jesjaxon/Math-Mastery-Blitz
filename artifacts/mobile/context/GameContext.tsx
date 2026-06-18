@@ -16,7 +16,7 @@ import {
 
 const DEFAULT_STORAGE_KEY = "@mathdrills_v4";
 
-const LEVEL_THRESHOLDS = [0, 40, 100, 200, 350, 550, 800, 1100, 1500, 2000, 2700, 3500, 4500, 5700, 7000, 8500, 10500, 13000, 16000, 20000];
+const LEVEL_THRESHOLDS = [0, 40, 100, 200, 350, 550, 800, 1100, 1500, 2000, 2700, 3600, 4700, 6000, 7500, 9500, 12000, 15000, 19000, 24000];
 
 export function getLevel(points: number): number {
   let level = 1;

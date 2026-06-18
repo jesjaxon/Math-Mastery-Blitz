@@ -198,19 +198,17 @@ export default function ResultsScreen() {
           </Animated.View>
 
           {/* Star Coins earned */}
-          {starCoinsEarned > 0 && (
-            <View style={[styles.coinsCard, { backgroundColor: "#00B4D818", borderColor: "#00B4D866" }]}>
-              <Text style={styles.coinsEmoji}>🪙</Text>
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.coinsEarned, { color: "#00B4D8" }]}>
-                  +{starCoinsEarned} star coins!
-                </Text>
-                <Text style={[styles.coinsBalance, { color: colors.mutedForeground }]}>
-                  Balance: {gameData.starCoins.toLocaleString()} 🪙
-                </Text>
-              </View>
+          <View style={[styles.coinsCard, { backgroundColor: "#00B4D818", borderColor: "#00B4D866" }]}>
+            <Text style={styles.coinsEmoji}>🪙</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.coinsEarned, { color: "#00B4D8" }]}>
+                +{starCoinsEarned} star coins this drill!
+              </Text>
+              <Text style={[styles.coinsBalance, { color: colors.mutedForeground }]}>
+                Balance: {gameData.starCoins.toLocaleString()} 🪙
+              </Text>
             </View>
-          )}
+          </View>
 
           {/* Stats Row */}
           <View style={styles.statsRow}>
