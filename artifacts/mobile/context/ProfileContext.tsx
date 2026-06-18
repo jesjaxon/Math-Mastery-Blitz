@@ -7,7 +7,7 @@ import React, {
   useState,
 } from "react";
 
-const PROFILES_INDEX_KEY = "@mathdrills_profiles_index";
+const PROFILES_INDEX_KEY = "@mathdrills_profiles_v2_index";
 
 export interface PlayerProfile {
   id: string;
@@ -69,7 +69,7 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
         name: name.trim() || "Player",
         avatar,
         createdAt: Date.now(),
-        storageKey: `@mathdrills_v3_${id}`,
+        storageKey: `@mathdrills_v4_${id}`,
       };
       setProfiles((prev) => {
         const next = [...prev, profile];

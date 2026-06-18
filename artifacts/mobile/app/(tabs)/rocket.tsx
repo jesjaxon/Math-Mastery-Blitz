@@ -20,7 +20,7 @@ import { useColors } from "@/hooks/useColors";
 export default function RocketScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { gameData, buyRocketPart, getPassiveRate } = useGame();
+  const { gameData, buyRocketPart, getPassiveRate, getLevel } = useGame();
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const bottomPad = Platform.OS === "web" ? 34 : insets.bottom;
@@ -30,8 +30,8 @@ export default function RocketScreen() {
   const allPartsOwned = ownedCount === totalParts;
   const progressPct = ownedCount / totalParts;
   const passiveRate = getPassiveRate();
+  const playerLevel = getLevel(gameData.points);
 
-  // Build earnings breakdown
   const earningItems: Array<{ emoji: string; name: string; rate: number }> = [];
   for (const [slot, itemId] of Object.entries(gameData.equippedItems)) {
     const item = SHOP_ITEMS.find((i) => i.id === itemId);
@@ -123,20 +123,27 @@ export default function RocketScreen() {
         {/* Rocket parts grid */}
         <View style={styles.section}>
           <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Rocket Parts</Text>
-          <Text style={[styles.sectionSub, { color: colors.mutedForeground }]}>Buy with Star Coins earned from classroom upgrades</Text>
+          <Text style={[styles.sectionSub, { color: colors.mutedForeground }]}>Buy with Star Coins earned from drills</Text>
           <View style={styles.partsGrid}>
             {ROCKET_PARTS.sort((a, b) => a.order - b.order).map((part) => {
               const owned = gameData.rocketPartsOwned.includes(part.id);
               const canAfford = gameData.starCoins >= part.cost;
+              const isLocked = playerLevel < part.levelRequired;
               return (
                 <View key={part.id} style={[styles.partCard, {
                   backgroundColor: owned ? "#051525" : colors.secondary,
                   borderColor: owned ? "#00B4D8" : colors.border,
                   borderWidth: owned ? 2 : 1,
+                  opacity: isLocked && !owned ? 0.65 : 1,
                 }]}>
                   {owned && (
                     <View style={[styles.ownedBadge, { backgroundColor: "#00B4D8" }]}>
                       <Text style={styles.ownedBadgeText}>✓</Text>
+                    </View>
+                  )}
+                  {isLocked && !owned && (
+                    <View style={[styles.lockBadge, { backgroundColor: "#FF475722" }]}>
+                      <Text style={[styles.lockText, { color: "#FF4757" }]}>🔒 Lv {part.levelRequired}</Text>
                     </View>
                   )}
                   <Text style={styles.partEmoji}>{part.emoji}</Text>
@@ -144,13 +151,13 @@ export default function RocketScreen() {
                   <Text style={[styles.partDesc, { color: colors.mutedForeground }]} numberOfLines={2}>{part.description}</Text>
                   {!owned ? (
                     <TouchableOpacity
-                      style={[styles.buyBtn, { backgroundColor: canAfford ? "#00B4D8" : colors.muted }]}
+                      style={[styles.buyBtn, { backgroundColor: (canAfford && !isLocked) ? "#00B4D8" : colors.muted }]}
                       onPress={() => handleBuy(part.id)}
-                      disabled={!canAfford}
+                      disabled={!canAfford || isLocked}
                       activeOpacity={0.82}
                     >
-                      <Text style={[styles.buyBtnText, { color: canAfford ? "#fff" : colors.mutedForeground }]}>
-                        🪙 {part.cost}
+                      <Text style={[styles.buyBtnText, { color: (canAfford && !isLocked) ? "#fff" : colors.mutedForeground }]}>
+                        {isLocked ? `🔒 Lv ${part.levelRequired}` : `🪙 ${part.cost}`}
                       </Text>
                     </TouchableOpacity>
                   ) : (
@@ -173,7 +180,7 @@ export default function RocketScreen() {
             <View style={[styles.earningsEmpty, { backgroundColor: colors.card, borderColor: colors.border }]}>
               <Text style={{ fontSize: 24 }}>🏫</Text>
               <Text style={[styles.earningsEmptyText, { color: colors.mutedForeground }]}>
-                Equip classroom items, aquarium animals, and zoo animals to start earning Star Coins passively.
+                Equip classroom items, aquarium animals, and zoo animals to start earning Star Coins when you complete drills.
               </Text>
               <View style={styles.earningsTips}>
                 <TouchableOpacity onPress={() => router.push("/shop")}>
@@ -238,6 +245,8 @@ const styles = StyleSheet.create({
   partCard: { width: "47%", borderRadius: 16, padding: 12, gap: 6, alignItems: "center", position: "relative" },
   ownedBadge: { position: "absolute", top: 8, right: 8, width: 20, height: 20, borderRadius: 10, alignItems: "center", justifyContent: "center" },
   ownedBadgeText: { color: "#000", fontSize: 11, fontFamily: "Inter_700Bold" },
+  lockBadge: { position: "absolute", top: 8, left: 8, borderRadius: 6, paddingHorizontal: 5, paddingVertical: 2 },
+  lockText: { fontSize: 9, fontFamily: "Inter_700Bold" },
   partEmoji: { fontSize: 38, marginVertical: 2 },
   partName: { fontSize: 13, fontFamily: "Inter_600SemiBold", textAlign: "center" },
   partDesc: { fontSize: 11, fontFamily: "Inter_400Regular", textAlign: "center", lineHeight: 15, minHeight: 30 },

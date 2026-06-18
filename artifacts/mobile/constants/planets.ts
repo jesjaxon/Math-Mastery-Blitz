@@ -2,25 +2,20 @@ export interface CelestialBody {
   id: string;
   name: string;
   emoji: string;
-  radius: number;        // visual + crash radius (world units)
-  captureRadius: number; // proximity to trigger "at planet" event
-  mu: number;            // gravitational parameter
-  soi: number;           // sphere of influence radius (gravity only within this)
-  color: string;         // accent/glow color
-  x: number;             // world x (Sun at origin)
-  y: number;             // world y
+  radius: number;
+  captureRadius: number;
+  mu: number;
+  soi: number;
+  color: string;
+  x: number;
+  y: number;
   isSun?: boolean;
   isEarth?: boolean;
-  gem?: string;          // gem emoji collected on visit
+  gem?: string;
   gemName?: string;
-  launchCost: number;    // star coins to attempt mission
-  travelHint: string;    // rough travel-time label for UI
+  launchCost: number;
+  travelHint: string;
 }
-
-// World layout: Sun at origin, Earth at (2000, 0).
-// 1 world unit ≈ 1 screen pixel at zoom 1.0.
-// Escape velocity from Earth orbit (~160 wu) with mu=5000: ~7.9 wu/tick.
-// Max slingshot (90px × 0.1 scale) = 9 wu/tick — just enough to escape.
 
 export const SOLAR_SYSTEM: CelestialBody[] = [
   {
@@ -51,7 +46,7 @@ export const SOLAR_SYSTEM: CelestialBody[] = [
     y: -900,
     gem: "🩶",
     gemName: "Graphite Crystal",
-    launchCost: 300,
+    launchCost: 20,
     travelHint: "~8 sec",
   },
   {
@@ -67,7 +62,7 @@ export const SOLAR_SYSTEM: CelestialBody[] = [
     y: -1600,
     gem: "🟡",
     gemName: "Sulfur Stone",
-    launchCost: 600,
+    launchCost: 35,
     travelHint: "~14 sec",
   },
   {
@@ -98,7 +93,7 @@ export const SOLAR_SYSTEM: CelestialBody[] = [
     y: -420,
     gem: "🌙",
     gemName: "Moonstone",
-    launchCost: 100,
+    launchCost: 8,
     travelHint: "~4 sec",
   },
   {
@@ -114,7 +109,7 @@ export const SOLAR_SYSTEM: CelestialBody[] = [
     y: 1200,
     gem: "❤️‍🔥",
     gemName: "Fire Ruby",
-    launchCost: 900,
+    launchCost: 50,
     travelHint: "~18 sec",
   },
   {
@@ -130,7 +125,7 @@ export const SOLAR_SYSTEM: CelestialBody[] = [
     y: 900,
     gem: "💛",
     gemName: "Golden Topaz",
-    launchCost: 2500,
+    launchCost: 150,
     travelHint: "~38 sec",
   },
   {
@@ -146,7 +141,7 @@ export const SOLAR_SYSTEM: CelestialBody[] = [
     y: -5500,
     gem: "💎",
     gemName: "Diamond Ring",
-    launchCost: 4000,
+    launchCost: 200,
     travelHint: "~55 sec",
   },
   {
@@ -162,7 +157,7 @@ export const SOLAR_SYSTEM: CelestialBody[] = [
     y: -8000,
     gem: "🩵",
     gemName: "Frost Aquamarine",
-    launchCost: 6500,
+    launchCost: 300,
     travelHint: "~1.2 min",
   },
   {
@@ -178,7 +173,7 @@ export const SOLAR_SYSTEM: CelestialBody[] = [
     y: 10500,
     gem: "💙",
     gemName: "Deep Space Sapphire",
-    launchCost: 9000,
+    launchCost: 450,
     travelHint: "~2 min",
   },
 ];

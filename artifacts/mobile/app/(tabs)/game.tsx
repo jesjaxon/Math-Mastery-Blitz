@@ -46,6 +46,7 @@ export default function GameScreen() {
   const streakRef = useRef(0);
   const maxStreakRef = useRef(0);
   const correctByOpRef = useRef<Partial<Record<Operation, number>>>({});
+  const startTimeRef = useRef(Date.now());
 
   const nextQuestion = useCallback(() => {
     setQuestion(generateQuestion(settings.operations, settings.difficulty));
@@ -171,6 +172,7 @@ export default function GameScreen() {
     const timer = setTimeout(() => {
       if (timeLeft === 1) {
         setGameOver(true);
+        const durationSeconds = Math.round((Date.now() - startTimeRef.current) / 1000);
         const result = {
           score: scoreRef.current,
           correctByOp: correctByOpRef.current,
@@ -178,10 +180,11 @@ export default function GameScreen() {
           operations: settings.operations,
           timeLimit: settings.timeLimit,
           difficulty: settings.difficulty,
-          totalGames: 0, // overridden inside saveSession
+          totalGames: 0,
+          durationSeconds,
         };
-        const { newAchievements, pointsEarned } = saveSession(result);
-        setLastSession({ ...result, newAchievements, pointsEarned });
+        const { newAchievements, pointsEarned, starCoinsEarned } = saveSession(result);
+        setLastSession({ ...result, newAchievements, pointsEarned, starCoinsEarned });
         router.replace("/results");
       } else {
         setTimeLeft((t) => t - 1);

@@ -20,12 +20,10 @@ function ZooScene({ displayed }: { displayed: string[] }) {
   const animals = ZOO_ANIMALS.filter((a) => displayed.includes(a.id));
   return (
     <View style={scene.enclosure}>
-      {/* Sky */}
       <View style={scene.sky}>
         <Text style={{ fontSize: 18 }}>☀️</Text>
         <Text style={{ fontSize: 14 }}>⛅</Text>
       </View>
-      {/* Ground */}
       <View style={scene.ground}>
         <Text style={{ fontSize: 16 }}>🌿</Text>
         <Text style={{ fontSize: 14 }}>🌱</Text>
@@ -33,7 +31,6 @@ function ZooScene({ displayed }: { displayed: string[] }) {
         <Text style={{ fontSize: 14 }}>🌱</Text>
         <Text style={{ fontSize: 16 }}>🌿</Text>
       </View>
-      {/* Animals */}
       {animals.length === 0 ? (
         <View style={scene.emptyZone}>
           <Text style={scene.emptyText}>The zoo is empty — adopt some animals below!</Text>
@@ -60,21 +57,8 @@ const scene = StyleSheet.create({
     justifyContent: "flex-end",
     position: "relative",
   },
-  sky: {
-    position: "absolute",
-    top: 10,
-    left: 16,
-    right: 16,
-    flexDirection: "row",
-    gap: 16,
-  },
-  ground: {
-    flexDirection: "row",
-    justifyContent: "space-around",
-    alignItems: "flex-end",
-    padding: 12,
-    backgroundColor: "#4A7C30",
-  },
+  sky: { position: "absolute", top: 10, left: 16, right: 16, flexDirection: "row", gap: 16 },
+  ground: { flexDirection: "row", justifyContent: "space-around", alignItems: "flex-end", padding: 12, backgroundColor: "#4A7C30" },
   emptyZone: { position: "absolute", top: 0, left: 0, right: 0, bottom: 60, alignItems: "center", justifyContent: "center" },
   emptyText: { color: "rgba(255,255,255,0.5)", fontSize: 13, fontFamily: "Inter_400Regular" },
   animalRow: {
@@ -93,11 +77,13 @@ const scene = StyleSheet.create({
 export default function ZooScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { gameData, buyAnimal, toggleDisplayAnimal } = useGame();
+  const { gameData, buyAnimal, toggleDisplayAnimal, getLevel } = useGame();
   const [justBought, setJustBought] = useState<string | null>(null);
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const bottomPad = Platform.OS === "web" ? 34 : insets.bottom;
+
+  const playerLevel = getLevel(gameData.points);
 
   const handleBuy = (id: string) => {
     const success = buyAnimal(id, "zoo");
@@ -166,16 +152,23 @@ export default function ZooScreen() {
               const canAfford = gameData.points >= animal.price;
               const isBought = justBought === animal.id;
               const rarityColor = RARITY_COLORS[animal.rarity];
+              const isLocked = playerLevel < animal.levelRequired;
 
               return (
                 <View key={animal.id} style={[styles.card, {
                   backgroundColor: owned ? colors.card : colors.secondary,
                   borderColor: owned ? rarityColor + "66" : colors.border,
                   borderWidth: owned ? 1.5 : 1,
+                  opacity: isLocked && !owned ? 0.65 : 1,
                 }]}>
                   <View style={[styles.rarityBadge, { backgroundColor: rarityColor + "22" }]}>
                     <Text style={[styles.rarityText, { color: rarityColor }]}>{RARITY_LABELS[animal.rarity]}</Text>
                   </View>
+                  {isLocked && !owned && (
+                    <View style={[styles.lockBadge, { backgroundColor: "#FF475722" }]}>
+                      <Text style={[styles.lockText, { color: "#FF4757" }]}>🔒 Lv {animal.levelRequired}</Text>
+                    </View>
+                  )}
                   <Text style={styles.animalEmoji}>{animal.emoji}</Text>
                   <Text style={[styles.animalName, { color: colors.foreground }]} numberOfLines={1}>{animal.name}</Text>
                   <Text style={[styles.animalDesc, { color: colors.mutedForeground }]} numberOfLines={2}>{animal.description}</Text>
@@ -184,12 +177,12 @@ export default function ZooScreen() {
                   </View>
                   {!owned ? (
                     <TouchableOpacity
-                      style={[styles.btn, { backgroundColor: canAfford ? colors.primary : colors.muted }]}
+                      style={[styles.btn, { backgroundColor: (canAfford && !isLocked) ? colors.primary : colors.muted }]}
                       onPress={() => handleBuy(animal.id)}
-                      disabled={!canAfford}
+                      disabled={!canAfford || isLocked}
                     >
-                      <Text style={[styles.btnText, { color: canAfford ? "#fff" : colors.mutedForeground }]}>
-                        ⭐ {animal.price.toLocaleString()}
+                      <Text style={[styles.btnText, { color: (canAfford && !isLocked) ? "#fff" : colors.mutedForeground }]}>
+                        {isLocked ? `🔒 Lv ${animal.levelRequired}` : `⭐ ${animal.price.toLocaleString()}`}
                       </Text>
                     </TouchableOpacity>
                   ) : isBought ? (
@@ -227,9 +220,11 @@ const styles = StyleSheet.create({
   chip: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 10, paddingVertical: 7, borderRadius: 12 },
   chipLabel: { fontSize: 12, fontFamily: "Inter_500Medium" },
   grid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
-  card: { width: "47%", borderRadius: 16, padding: 12, gap: 5, alignItems: "center" },
+  card: { width: "47%", borderRadius: 16, padding: 12, gap: 5, alignItems: "center", position: "relative" },
   rarityBadge: { borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 },
   rarityText: { fontSize: 10, fontFamily: "Inter_700Bold", textTransform: "uppercase", letterSpacing: 0.5 },
+  lockBadge: { position: "absolute", top: 28, right: 8, borderRadius: 6, paddingHorizontal: 5, paddingVertical: 2 },
+  lockText: { fontSize: 9, fontFamily: "Inter_700Bold" },
   animalEmoji: { fontSize: 38, marginVertical: 2 },
   animalName: { fontSize: 13, fontFamily: "Inter_600SemiBold", textAlign: "center" },
   animalDesc: { fontSize: 11, fontFamily: "Inter_400Regular", textAlign: "center", lineHeight: 15, minHeight: 30 },

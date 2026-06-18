@@ -36,12 +36,14 @@ const SLOT_LABELS: Record<string, string> = {
 export default function ShopScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { gameData, purchaseItem, equipItem } = useGame();
+  const { gameData, purchaseItem, equipItem, getLevel } = useGame();
   const [filter, setFilter] = useState<FilterTab>("all");
   const [justBought, setJustBought] = useState<string | null>(null);
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const bottomPad = Platform.OS === "web" ? 34 : insets.bottom;
+
+  const playerLevel = getLevel(gameData.points);
 
   const filtered =
     filter === "all"
@@ -79,12 +81,7 @@ export default function ShopScreen() {
             <Feather name="arrow-left" size={20} color={colors.foreground} />
           </TouchableOpacity>
           <Text style={[styles.title, { color: colors.foreground }]}>Shop</Text>
-          <View
-            style={[
-              styles.balanceBadge,
-              { backgroundColor: colors.gold + "22" },
-            ]}
-          >
+          <View style={[styles.balanceBadge, { backgroundColor: colors.gold + "22" }]}>
             <Text style={[styles.balanceText, { color: colors.gold }]}>
               ⭐ {gameData.points.toLocaleString()}
             </Text>
@@ -110,10 +107,7 @@ export default function ShopScreen() {
               <Text
                 style={[
                   styles.tabText,
-                  {
-                    color:
-                      filter === tab.id ? "#fff" : colors.mutedForeground,
-                  },
+                  { color: filter === tab.id ? "#fff" : colors.mutedForeground },
                 ]}
               >
                 {tab.label}
@@ -129,6 +123,7 @@ export default function ShopScreen() {
             const equipped = gameData.equippedItems[item.slot] === item.id;
             const canAfford = gameData.points >= item.price;
             const isBought = justBought === item.id;
+            const isLocked = playerLevel < item.levelRequired;
 
             return (
               <View
@@ -143,34 +138,29 @@ export default function ShopScreen() {
                       ? colors.border
                       : colors.border,
                     borderWidth: equipped ? 2 : 1,
+                    opacity: isLocked && !owned ? 0.65 : 1,
                   },
                 ]}
               >
                 {/* Equipped indicator */}
                 {equipped && (
-                  <View
-                    style={[
-                      styles.equippedBadge,
-                      { backgroundColor: colors.accent },
-                    ]}
-                  >
+                  <View style={[styles.equippedBadge, { backgroundColor: colors.accent }]}>
                     <Text style={styles.equippedText}>ON</Text>
                   </View>
                 )}
 
-                {/* Emoji */}
-                <Text style={styles.itemEmoji}>{item.emoji}</Text>
+                {/* Level lock badge */}
+                {isLocked && !owned && (
+                  <View style={[styles.lockBadge, { backgroundColor: "#FF475722" }]}>
+                    <Text style={[styles.lockText, { color: "#FF4757" }]}>🔒 Lv {item.levelRequired}</Text>
+                  </View>
+                )}
 
-                {/* Info */}
-                <Text
-                  style={[styles.itemName, { color: colors.foreground }]}
-                  numberOfLines={1}
-                >
+                <Text style={styles.itemEmoji}>{item.emoji}</Text>
+                <Text style={[styles.itemName, { color: colors.foreground }]} numberOfLines={1}>
                   {item.name}
                 </Text>
-                <Text
-                  style={[styles.itemSlot, { color: colors.mutedForeground }]}
-                >
+                <Text style={[styles.itemSlot, { color: colors.mutedForeground }]}>
                   {SLOT_LABELS[item.slot]}
                 </Text>
                 <Text
@@ -193,45 +183,35 @@ export default function ShopScreen() {
                     style={[
                       styles.buyBtn,
                       {
-                        backgroundColor: canAfford
-                          ? colors.primary
+                        backgroundColor:
+                          isLocked ? colors.muted
+                          : canAfford ? colors.primary
                           : colors.muted,
                       },
                     ]}
                     onPress={() => handleBuy(item.id)}
-                    disabled={!canAfford}
+                    disabled={!canAfford || isLocked}
                     activeOpacity={0.8}
                   >
                     <Text
                       style={[
                         styles.buyBtnText,
-                        { color: canAfford ? "#fff" : colors.mutedForeground },
+                        { color: (canAfford && !isLocked) ? "#fff" : colors.mutedForeground },
                       ]}
                     >
-                      {canAfford ? `⭐ ${item.price}` : `⭐ ${item.price}`}
+                      {isLocked ? `🔒 Lv ${item.levelRequired}` : `⭐ ${item.price}`}
                     </Text>
                   </TouchableOpacity>
                 ) : isBought ? (
-                  <View
-                    style={[
-                      styles.ownedBtn,
-                      { backgroundColor: colors.success + "22" },
-                    ]}
-                  >
-                    <Text
-                      style={[styles.ownedText, { color: colors.success }]}
-                    >
-                      ✓ Bought!
-                    </Text>
+                  <View style={[styles.ownedBtn, { backgroundColor: colors.success + "22" }]}>
+                    <Text style={[styles.ownedText, { color: colors.success }]}>✓ Bought!</Text>
                   </View>
                 ) : (
                   <TouchableOpacity
                     style={[
                       styles.equipBtn,
                       {
-                        backgroundColor: equipped
-                          ? colors.accent + "22"
-                          : colors.secondary,
+                        backgroundColor: equipped ? colors.accent + "22" : colors.secondary,
                         borderColor: equipped ? colors.accent : colors.border,
                       },
                     ]}
@@ -241,9 +221,7 @@ export default function ShopScreen() {
                     <Text
                       style={[
                         styles.equipText,
-                        {
-                          color: equipped ? colors.accent : colors.foreground,
-                        },
+                        { color: equipped ? colors.accent : colors.foreground },
                       ]}
                     >
                       {equipped ? "Unequip" : "Equip"}
@@ -257,10 +235,7 @@ export default function ShopScreen() {
 
         {/* Go to classroom hint */}
         <TouchableOpacity
-          style={[
-            styles.classroomHint,
-            { backgroundColor: colors.card, borderColor: colors.border },
-          ]}
+          style={[styles.classroomHint, { backgroundColor: colors.card, borderColor: colors.border }]}
           onPress={() => router.push("/classroom")}
           activeOpacity={0.85}
         >
@@ -278,131 +253,33 @@ export default function ShopScreen() {
 const styles = StyleSheet.create({
   root: { flex: 1 },
   scroll: { paddingHorizontal: 20, gap: 16 },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  backBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    alignItems: "center",
-    justifyContent: "center",
-  },
+  header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  backBtn: { width: 40, height: 40, borderRadius: 12, alignItems: "center", justifyContent: "center" },
   title: { fontSize: 22, fontFamily: "Inter_700Bold" },
-  balanceBadge: {
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-  },
+  balanceBadge: { borderRadius: 12, paddingHorizontal: 12, paddingVertical: 6 },
   balanceText: { fontSize: 15, fontFamily: "Inter_700Bold" },
-  tabRow: {
-    flexDirection: "row",
-    borderRadius: 14,
-    padding: 4,
-    borderWidth: 1,
-    gap: 4,
-  },
-  tab: {
-    flex: 1,
-    borderRadius: 10,
-    paddingVertical: 8,
-    alignItems: "center",
-  },
+  tabRow: { flexDirection: "row", borderRadius: 14, padding: 4, borderWidth: 1, gap: 4 },
+  tab: { flex: 1, borderRadius: 10, paddingVertical: 8, alignItems: "center" },
   tabText: { fontSize: 14, fontFamily: "Inter_600SemiBold" },
-  grid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 10,
-  },
-  itemCard: {
-    width: "47%",
-    borderRadius: 16,
-    padding: 14,
-    gap: 6,
-    alignItems: "center",
-    position: "relative",
-  },
-  equippedBadge: {
-    position: "absolute",
-    top: 8,
-    right: 8,
-    borderRadius: 6,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-  },
-  equippedText: {
-    fontSize: 10,
-    fontFamily: "Inter_700Bold",
-    color: "#000",
-  },
+  grid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
+  itemCard: { width: "47%", borderRadius: 16, padding: 14, gap: 6, alignItems: "center", position: "relative" },
+  equippedBadge: { position: "absolute", top: 8, right: 8, borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 },
+  equippedText: { fontSize: 10, fontFamily: "Inter_700Bold", color: "#000" },
+  lockBadge: { position: "absolute", top: 8, left: 8, borderRadius: 6, paddingHorizontal: 5, paddingVertical: 2 },
+  lockText: { fontSize: 9, fontFamily: "Inter_700Bold" },
   itemEmoji: { fontSize: 38 },
-  itemName: {
-    fontSize: 13,
-    fontFamily: "Inter_600SemiBold",
-    textAlign: "center",
-  },
-  itemSlot: {
-    fontSize: 10,
-    fontFamily: "Inter_500Medium",
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
-  },
-  itemDesc: {
-    fontSize: 11,
-    fontFamily: "Inter_400Regular",
-    textAlign: "center",
-    lineHeight: 15,
-    minHeight: 30,
-  },
-  buyBtn: {
-    borderRadius: 10,
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    alignItems: "center",
-    width: "100%",
-  },
+  itemName: { fontSize: 13, fontFamily: "Inter_600SemiBold", textAlign: "center" },
+  itemSlot: { fontSize: 10, fontFamily: "Inter_500Medium", textTransform: "uppercase", letterSpacing: 0.5 },
+  itemDesc: { fontSize: 11, fontFamily: "Inter_400Regular", textAlign: "center", lineHeight: 15, minHeight: 30 },
+  buyBtn: { borderRadius: 10, paddingVertical: 8, paddingHorizontal: 16, alignItems: "center", width: "100%" },
   buyBtnText: { fontSize: 14, fontFamily: "Inter_700Bold" },
-  ownedBtn: {
-    borderRadius: 10,
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    alignItems: "center",
-    width: "100%",
-  },
+  ownedBtn: { borderRadius: 10, paddingVertical: 8, paddingHorizontal: 16, alignItems: "center", width: "100%" },
   ownedText: { fontSize: 13, fontFamily: "Inter_600SemiBold" },
-  equipBtn: {
-    borderRadius: 10,
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    alignItems: "center",
-    width: "100%",
-    borderWidth: 1,
-  },
+  equipBtn: { borderRadius: 10, paddingVertical: 8, paddingHorizontal: 16, alignItems: "center", width: "100%", borderWidth: 1 },
   equipText: { fontSize: 13, fontFamily: "Inter_600SemiBold" },
-  classroomHint: {
-    borderRadius: 14,
-    padding: 16,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    borderWidth: 1,
-  },
+  classroomHint: { borderRadius: 14, padding: 16, flexDirection: "row", alignItems: "center", gap: 10, borderWidth: 1 },
   classroomEmoji: { fontSize: 24 },
-  classroomHintText: {
-    flex: 1,
-    fontSize: 14,
-    fontFamily: "Inter_500Medium",
-  },
-  coinRateTag: {
-    borderRadius: 8,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    alignSelf: "center",
-  },
-  coinRateTagText: {
-    fontSize: 11,
-    fontFamily: "Inter_700Bold",
-  },
+  classroomHintText: { flex: 1, fontSize: 14, fontFamily: "Inter_500Medium" },
+  coinRateTag: { borderRadius: 8, paddingHorizontal: 8, paddingVertical: 3, alignSelf: "center" },
+  coinRateTagText: { fontSize: 11, fontFamily: "Inter_700Bold" },
 });

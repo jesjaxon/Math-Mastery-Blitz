@@ -26,10 +26,9 @@ const OP_SYMBOLS: Record<Operation, string> = {
 export default function HomeScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { gameData, isLoaded, getPassiveRate } = useGame();
+  const { gameData, isLoaded, getPassiveRate, getLevel } = useGame();
   const { activeProfile, profiles } = useProfiles();
 
-  // Redirect to profiles screen if no profile selected
   useEffect(() => {
     if (profiles.length > 0 && !activeProfile) {
       router.replace("/(tabs)/profiles");
@@ -45,6 +44,7 @@ export default function HomeScreen() {
   const passiveRate = getPassiveRate();
   const rocketProgress = gameData.rocketPartsOwned.length;
   const rocketTotal = ROCKET_PARTS.length;
+  const playerLevel = getLevel(gameData.points);
 
   const navItems = [
     { label: "Classroom", emoji: "🏫", route: "/classroom" },
@@ -70,7 +70,6 @@ export default function HomeScreen() {
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.header}>
-          {/* Player switcher */}
           <TouchableOpacity
             style={[styles.playerBtn, { backgroundColor: colors.card }]}
             onPress={() => router.push("/(tabs)/profiles")}
@@ -103,6 +102,9 @@ export default function HomeScreen() {
               <View style={{ flex: 1 }}>
                 <Text style={[styles.currencyValue, { color: colors.gold }]}>{gameData.points.toLocaleString()}</Text>
                 <Text style={[styles.currencyLabel, { color: colors.mutedForeground }]}>Points</Text>
+              </View>
+              <View style={[styles.levelBadge, { backgroundColor: colors.primary + "22" }]}>
+                <Text style={[styles.levelBadgeText, { color: colors.primary }]}>Lv {playerLevel}</Text>
               </View>
               {unclaimedCount > 0 && (
                 <TouchableOpacity style={[styles.claimPill, { backgroundColor: colors.gold + "22" }]} onPress={() => router.push("/achievements")}>
@@ -214,6 +216,8 @@ const styles = StyleSheet.create({
   currencyEmoji: { fontSize: 22 },
   currencyValue: { fontSize: 22, fontFamily: "Inter_700Bold" },
   currencyLabel: { fontSize: 11, fontFamily: "Inter_500Medium" },
+  levelBadge: { borderRadius: 8, paddingHorizontal: 7, paddingVertical: 3 },
+  levelBadgeText: { fontSize: 11, fontFamily: "Inter_700Bold" },
   claimPill: { borderRadius: 10, paddingHorizontal: 8, paddingVertical: 4 },
   claimPillText: { fontSize: 12, fontFamily: "Inter_700Bold" },
   statsRow: { flexDirection: "row", gap: 8 },

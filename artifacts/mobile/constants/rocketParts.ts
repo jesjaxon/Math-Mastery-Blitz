@@ -2,9 +2,10 @@ export interface RocketPart {
   id: string;
   name: string;
   emoji: string;
-  cost: number; // star coins
+  cost: number;
   description: string;
-  order: number; // display order
+  order: number;
+  levelRequired: number;
 }
 
 export const ROCKET_PARTS: RocketPart[] = [
@@ -12,49 +13,55 @@ export const ROCKET_PARTS: RocketPart[] = [
     id: "solar_panels",
     name: "Solar Panels",
     emoji: "☀️",
-    cost: 150,
+    cost: 20,
     description: "Power from the sun to fuel your journey",
     order: 1,
+    levelRequired: 6,
   },
   {
     id: "fuselage",
     name: "Fuselage",
     emoji: "🛸",
-    cost: 200,
+    cost: 30,
     description: "The main body — holds everything together",
     order: 2,
+    levelRequired: 7,
   },
   {
     id: "fuel_tank",
     name: "Fuel Tank",
     emoji: "⛽",
-    cost: 250,
+    cost: 40,
     description: "Liquid hydrogen and oxygen, fully loaded",
     order: 3,
+    levelRequired: 8,
   },
   {
     id: "engine",
     name: "Engine Module",
     emoji: "🔥",
-    cost: 350,
+    cost: 55,
     description: "3.5 million pounds of thrust",
     order: 4,
+    levelRequired: 9,
   },
   {
     id: "navigation",
     name: "Navigation System",
     emoji: "📡",
-    cost: 400,
+    cost: 65,
     description: "Precise targeting to the moon and back",
     order: 5,
+    levelRequired: 10,
   },
   {
     id: "command_module",
     name: "Command Module",
     emoji: "🚀",
-    cost: 500,
+    cost: 80,
     description: "Your cockpit among the stars",
     order: 6,
+    levelRequired: 11,
   },
 ];
 

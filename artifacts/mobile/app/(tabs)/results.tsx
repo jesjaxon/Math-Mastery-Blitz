@@ -27,7 +27,7 @@ const OP_COLORS: Record<Operation, string> = {
 export default function ResultsScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { lastSession, gameData } = useGame();
+  const { lastSession, gameData, getLevel } = useGame();
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const bottomPad = Platform.OS === "web" ? 34 : insets.bottom;
@@ -79,6 +79,7 @@ export default function ResultsScreen() {
 
   const { score, correctByOp, maxStreak, operations, pointsEarned } =
     lastSession as any;
+  const starCoinsEarned: number = (lastSession as any).starCoinsEarned ?? 0;
   const newAchievementIds: string[] = (lastSession as any).newAchievements ?? [];
   const newAchievements = ACHIEVEMENTS.filter((a) =>
     newAchievementIds.includes(a.id)
@@ -89,6 +90,11 @@ export default function ResultsScreen() {
     (s, a) => s + a.bonusPoints,
     0
   );
+
+  const currentLevel = getLevel(gameData.points);
+  const prevPoints = gameData.points - pointsEarned;
+  const prevLevel = getLevel(prevPoints < 0 ? 0 : prevPoints);
+  const didLevelUp = currentLevel > prevLevel;
 
   const scoreScale = scoreAnim.interpolate({
     inputRange: [0, 1],
@@ -149,6 +155,16 @@ export default function ResultsScreen() {
             </View>
           )}
 
+          {/* Level Up banner */}
+          {didLevelUp && (
+            <View style={[styles.levelUpBanner, { backgroundColor: "#7C6FFF22", borderColor: "#7C6FFF" }]}>
+              <Text style={styles.levelUpEmoji}>🎉</Text>
+              <Text style={[styles.levelUpText, { color: "#7C6FFF" }]}>
+                Level Up! → Lv {currentLevel}
+              </Text>
+            </View>
+          )}
+
           {/* Points earned */}
           <Animated.View
             style={[
@@ -171,7 +187,7 @@ export default function ResultsScreen() {
                   { color: colors.mutedForeground },
                 ]}
               >
-                Balance: {gameData.points.toLocaleString()} pts
+                Balance: {gameData.points.toLocaleString()} pts · Lv {currentLevel}
               </Text>
             </View>
             {totalBonusAvail > 0 && (
@@ -180,6 +196,21 @@ export default function ResultsScreen() {
               </Text>
             )}
           </Animated.View>
+
+          {/* Star Coins earned */}
+          {starCoinsEarned > 0 && (
+            <View style={[styles.coinsCard, { backgroundColor: "#00B4D818", borderColor: "#00B4D866" }]}>
+              <Text style={styles.coinsEmoji}>🪙</Text>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.coinsEarned, { color: "#00B4D8" }]}>
+                  +{starCoinsEarned} star coins!
+                </Text>
+                <Text style={[styles.coinsBalance, { color: colors.mutedForeground }]}>
+                  Balance: {gameData.starCoins.toLocaleString()} 🪙
+                </Text>
+              </View>
+            </View>
+          )}
 
           {/* Stats Row */}
           <View style={styles.statsRow}>
@@ -383,6 +414,18 @@ const styles = StyleSheet.create({
     borderRadius: 20,
   },
   pbText: { fontSize: 15, fontFamily: "Inter_600SemiBold" },
+  levelUpBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+    borderRadius: 16,
+    borderWidth: 1.5,
+    width: "100%",
+  },
+  levelUpEmoji: { fontSize: 22 },
+  levelUpText: { fontSize: 17, fontFamily: "Inter_700Bold" },
   pointsCard: {
     flexDirection: "row",
     alignItems: "center",
@@ -400,6 +443,18 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_700Bold",
     textAlign: "center",
   },
+  coinsCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    width: "100%",
+    borderRadius: 16,
+    borderWidth: 1.5,
+    padding: 16,
+  },
+  coinsEmoji: { fontSize: 28 },
+  coinsEarned: { fontSize: 16, fontFamily: "Inter_700Bold" },
+  coinsBalance: { fontSize: 12, fontFamily: "Inter_400Regular", marginTop: 2 },
   statsRow: { flexDirection: "row", gap: 12, width: "100%" },
   statCard: {
     flex: 1,

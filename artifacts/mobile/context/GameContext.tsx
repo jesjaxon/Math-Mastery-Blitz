@@ -14,7 +14,18 @@ import {
   type Operation,
 } from "@/constants/achievements";
 
-const DEFAULT_STORAGE_KEY = "@mathdrills_v3";
+const DEFAULT_STORAGE_KEY = "@mathdrills_v4";
+
+const LEVEL_THRESHOLDS = [0, 40, 100, 200, 350, 550, 800, 1100, 1500, 2000, 2700, 3500, 4500, 5700, 7000, 8500, 10500, 13000, 16000, 20000];
+
+export function getLevel(points: number): number {
+  let level = 1;
+  for (let i = 1; i < LEVEL_THRESHOLDS.length; i++) {
+    if (points >= LEVEL_THRESHOLDS[i]) level = i + 1;
+    else break;
+  }
+  return level;
+}
 
 interface PerOpStats {
   totalCorrect: number;
@@ -52,6 +63,7 @@ export interface GameSettings {
 export interface SaveSessionResult {
   newAchievements: string[];
   pointsEarned: number;
+  starCoinsEarned: number;
 }
 
 const DEFAULT_SETTINGS: GameSettings = {
@@ -105,24 +117,8 @@ function getPassiveRate(data: GameData): number {
   return rate;
 }
 
-function calculateDrillPoints(
-  score: number,
-  difficulty: Difficulty,
-  maxStreak: number
-): number {
-  const base = score * ({ easy: 10, medium: 15, hard: 25 }[difficulty] ?? 10);
-  const mult =
-    maxStreak >= 20 ? 1.5 : maxStreak >= 10 ? 1.25 : maxStreak >= 5 ? 1.1 : 1;
-  return Math.round(base * mult);
-}
-
-function applyPassiveTick(prev: GameData): GameData {
-  const now = Date.now();
-  const elapsed = (now - prev.lastPassiveCheck) / 3600000;
-  const rate = getPassiveRate(prev);
-  const earned = Math.floor(elapsed * rate);
-  if (earned <= 0) return { ...prev, lastPassiveCheck: now };
-  return { ...prev, starCoins: prev.starCoins + earned, lastPassiveCheck: now };
+function calculateDrillPoints(score: number): number {
+  return score;
 }
 
 function createDefaultGameData(): GameData {
@@ -137,7 +133,7 @@ interface GameContextType {
   settings: GameSettings;
   updateSettings: (partial: Partial<GameSettings>) => void;
   saveSession: (result: DrillResult) => SaveSessionResult;
-  lastSession: (DrillResult & { newAchievements: string[]; pointsEarned: number }) | null;
+  lastSession: (DrillResult & { newAchievements: string[]; pointsEarned: number; starCoinsEarned: number }) | null;
   setLastSession: (r: GameContextType["lastSession"]) => void;
   claimBonus: (achievementId: string) => number;
   purchaseItem: (itemId: string) => boolean;
@@ -150,6 +146,7 @@ interface GameContextType {
   spendStarCoins: (amount: number) => boolean;
   unlockAchievement: (id: string) => void;
   getPassiveRate: () => number;
+  getLevel: (points: number) => number;
   resetGameProgress: () => void;
   resetAchievements: () => void;
   setDevUnlimitedMoney: (enabled: boolean) => void;
@@ -200,8 +197,7 @@ export function GameProvider({
             settings?: Partial<GameSettings>;
           };
           if (parsed.gameData) {
-            const loaded = { ...DEFAULT_DATA, ...parsed.gameData };
-            setGameData(applyPassiveTick(loaded));
+            setGameData({ ...DEFAULT_DATA, ...parsed.gameData });
           }
           if (parsed.settings)
             setSettings({ ...DEFAULT_SETTINGS, ...parsed.settings });
@@ -210,19 +206,6 @@ export function GameProvider({
       .catch(() => {})
       .finally(() => setIsLoaded(true));
   }, [storageKey]);
-
-  useEffect(() => {
-    if (!isLoaded) return;
-    const interval = setInterval(() => {
-      setGameData((prev) => {
-        const next = applyPassiveTick(prev);
-        if (next === prev) return prev;
-        persist(next, settingsRef.current);
-        return next;
-      });
-    }, 60000);
-    return () => clearInterval(interval);
-  }, [isLoaded, persist]);
 
   const updateSettings = useCallback(
     (partial: Partial<GameSettings>) => {
@@ -271,19 +254,20 @@ export function GameProvider({
 
   const saveSession = useCallback(
     (result: DrillResult): SaveSessionResult => {
-      const pointsEarned = calculateDrillPoints(
-        result.score,
-        result.difficulty,
-        result.maxStreak
-      );
+      const pointsEarned = calculateDrillPoints(result.score);
       const newlyUnlocked: string[] = [];
+      let starCoinsEarned = 0;
 
       setGameData((prev) => {
+        const rate = getPassiveRate(prev);
+        starCoinsEarned = Math.floor((result.durationSeconds / 3600) * rate);
+
         let next: GameData = {
           ...prev,
           totalGames: prev.totalGames + 1,
           allTimeBest: Math.max(prev.allTimeBest, result.score),
           points: prev.points + pointsEarned,
+          starCoins: prev.starCoins + starCoinsEarned,
           opStats: { ...prev.opStats },
           unlockedAchievements: { ...prev.unlockedAchievements },
           unclaimedBonuses: { ...prev.unclaimedBonuses },
@@ -311,7 +295,7 @@ export function GameProvider({
         return next;
       });
 
-      return { newAchievements: newlyUnlocked, pointsEarned };
+      return { newAchievements: newlyUnlocked, pointsEarned, starCoinsEarned };
     },
     [persist]
   );
@@ -580,6 +564,7 @@ export function GameProvider({
         spendStarCoins,
         unlockAchievement,
         getPassiveRate: getRate,
+        getLevel,
         resetGameProgress,
         resetAchievements,
         setDevUnlimitedMoney,
