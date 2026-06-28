@@ -17,22 +17,22 @@ const RANGES: Record<
   Record<Operation, { min: number; max: number }>
 > = {
   easy: {
-    add: { min: 1, max: 20 },
-    sub: { min: 1, max: 20 },
-    mul: { min: 1, max: 6 },
-    div: { min: 1, max: 6 },
+    add: { min: 1, max: 9 },
+    sub: { min: 1, max: 9 },
+    mul: { min: 2, max: 9 },
+    div: { min: 2, max: 9 },
   },
   medium: {
-    add: { min: 1, max: 50 },
-    sub: { min: 1, max: 50 },
-    mul: { min: 1, max: 9 },
-    div: { min: 1, max: 9 },
+    add: { min: 10, max: 99 },
+    sub: { min: 10, max: 99 },
+    mul: { min: 10, max: 99 },
+    div: { min: 10, max: 99 },
   },
   hard: {
-    add: { min: 1, max: 100 },
-    sub: { min: 1, max: 100 },
-    mul: { min: 1, max: 12 },
-    div: { min: 1, max: 12 },
+    add: { min: 100, max: 999 },
+    sub: { min: 100, max: 999 },
+    mul: { min: 100, max: 999 },
+    div: { min: 100, max: 999 },
   },
 };
 
@@ -50,8 +50,8 @@ export function generateQuestion(
       return { a, b, op, answer: a + b, display: `${a} + ${b}` };
     }
     case "sub": {
-      const a = rnd(Math.max(min, 2), max);
-      const b = rnd(0, a);
+      const a = rnd(min, max);
+      const b = rnd(min, a);
       return { a, b, op, answer: a - b, display: `${a} \u2212 ${b}` };
     }
     case "mul": {

@@ -2,6 +2,8 @@ import { Feather } from "@expo/vector-icons";
 import { router } from "expo-router";
 import React, { useEffect } from "react";
 import {
+  Image,
+  type ImageSourcePropType,
   Platform,
   ScrollView,
   StyleSheet,
@@ -9,24 +11,47 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ROCKET_PARTS } from "@/constants/rocketParts";
+import { getProfileAvatarAsset } from "@/constants/profileAvatars";
 import { useGame } from "@/context/GameContext";
 import { useProfiles } from "@/context/ProfileContext";
 import { useColors } from "@/hooks/useColors";
-import type { Operation } from "@/constants/achievements";
+import { XpBar } from "@/components/XpBar";
 
-const OP_COLORS: Record<Operation, string> = {
-  add: "#7C6FFF", sub: "#FF6B9D", mul: "#00D9A3", div: "#FF9F43",
-};
-const OP_SYMBOLS: Record<Operation, string> = {
-  add: "+", sub: "−", mul: "×", div: "÷",
+const MENU_ASSETS = {
+  profile: require("@/assets/game/menu/profile.png"),
+  points: require("@/assets/game/menu/points.png"),
+  starCoin: require("@/assets/game/menu/star-coin.png"),
+  classroom: require("@/assets/game/menu/classroom.png"),
+  aquarium: require("@/assets/game/menu/aquarium.png"),
+  zoo: require("@/assets/game/menu/zoo.png"),
+  shop: require("@/assets/game/menu/shop.png"),
+  workshop: require("@/assets/game/menu/workshop.png"),
+  rocket: require("@/assets/game/menu/rocket.png"),
+  badges: require("@/assets/game/menu/badges.png"),
+  start: require("@/assets/game/menu/start.png"),
+  operations: require("@/assets/game/menu/operations.png"),
+  titleBanner: require("@/assets/game/menu/one-minute-space-math-banner.png"),
+  settings: require("@/assets/game/menu/settings.png"),
+} satisfies Record<string, ImageSourcePropType>;
+
+type NavItem = {
+  label: string;
+  route: string;
+  asset: ImageSourcePropType;
+  color: string;
+  subtitle: string;
+  badge?: string;
+  badgeColor?: string;
+  highlight?: boolean;
 };
 
 export default function HomeScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { gameData, isLoaded, getPassiveRate, getLevel } = useGame();
+  const { gameData, isLoaded, getPassiveRate, getLevelInfo } = useGame();
   const { activeProfile, profiles } = useProfiles();
 
   useEffect(() => {
@@ -37,28 +62,34 @@ export default function HomeScreen() {
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const bottomPad = Platform.OS === "web" ? 34 : insets.bottom;
+  const headerHeight = topPad + 112;
 
-  const ops: Operation[] = ["add", "sub", "mul", "div"];
   const unclaimedCount = Object.keys(gameData.unclaimedBonuses).length;
   const totalUnclaimed = Object.values(gameData.unclaimedBonuses).reduce((s, v) => s + v, 0);
   const passiveRate = getPassiveRate();
   const rocketProgress = gameData.rocketPartsOwned.length;
   const rocketTotal = ROCKET_PARTS.length;
-  const playerLevel = getLevel(gameData.points);
+  const levelInfo = getLevelInfo(gameData.points);
+  const nextLevelTitle = levelInfo.nextLevelXp
+    ? getLevelInfo(levelInfo.nextLevelXp).title
+    : levelInfo.title;
+  const activeAvatarAsset = getProfileAvatarAsset(activeProfile?.avatar) ?? MENU_ASSETS.profile;
 
-  const navItems = [
-    { label: "Classroom", emoji: "🏫", route: "/classroom" },
-    { label: "Aquarium", emoji: "🐠", route: "/aquarium" },
-    { label: "Zoo", emoji: "🦁", route: "/zoo" },
-    { label: "Shop", emoji: "🛒", route: "/shop" },
-    { label: "Workshop", emoji: "⚗️", route: "/workshop" },
+  const navItems: NavItem[] = [
+    { label: "Account", asset: activeAvatarAsset, route: "/account", color: "#7C6FFF", subtitle: "Stats & analytics" },
+    { label: "Leaderboard", asset: MENU_ASSETS.badges, route: "/leaderboard", color: "#FFD166", subtitle: "Compete online" },
+    { label: "Classroom", asset: MENU_ASSETS.classroom, route: "/classroom", color: "#8ACB5A", subtitle: "Decorate" },
+    { label: "Aquarium", asset: MENU_ASSETS.aquarium, route: "/aquarium", color: "#00B4D8", subtitle: "Collect sea pals" },
+    { label: "Zoo", asset: MENU_ASSETS.zoo, route: "/zoo", color: "#66BB6A", subtitle: "Adopt animals" },
+    { label: "Shop", asset: MENU_ASSETS.shop, route: "/shop", color: "#FF6B9D", subtitle: "New rewards" },
+    { label: "Workshop", asset: MENU_ASSETS.workshop, route: "/workshop", color: "#9C7CFF", subtitle: "Craft boosts" },
     {
-      label: "Rocket", emoji: "🚀", route: "/rocket",
+      label: "Rocket", asset: MENU_ASSETS.rocket, route: "/rocket", color: "#00B4D8", subtitle: "Build & launch",
       badge: rocketProgress > 0 ? `${rocketProgress}/${rocketTotal}` : undefined,
       highlight: rocketProgress === rocketTotal,
     },
     {
-      label: "Badges", emoji: "🏆", route: "/achievements",
+      label: "Badges", asset: MENU_ASSETS.badges, route: "/achievements", color: "#FFD166", subtitle: "Claim prizes",
       badge: unclaimedCount > 0 ? `+${totalUnclaimed}` : undefined,
       badgeColor: colors.gold,
     },
@@ -66,87 +97,112 @@ export default function HomeScreen() {
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
+      <View style={[styles.homeHeader, { paddingTop: topPad + 8, backgroundColor: colors.background }]}>
+        <TouchableOpacity
+          style={[styles.headerAvatarBtn, { backgroundColor: "#16152C", borderColor: "#7C6FFF66" }]}
+          onPress={() => router.push("/(tabs)/profiles")}
+          activeOpacity={0.78}
+        >
+          <Image source={activeAvatarAsset} style={styles.headerAvatarAsset} resizeMode="contain" />
+        </TouchableOpacity>
+        <View style={styles.headerLogoWrap}>
+          <Image source={MENU_ASSETS.titleBanner} style={styles.headerLogo} resizeMode="contain" />
+        </View>
+        <TouchableOpacity
+          style={[styles.headerSettingsBtn, { backgroundColor: "#16152C", borderColor: "#7C6FFF66" }]}
+          onPress={() => router.push("/settings" as any)}
+          activeOpacity={0.82}
+        >
+          <Image source={MENU_ASSETS.settings} style={styles.headerSettingsAsset} resizeMode="contain" />
+        </TouchableOpacity>
+      </View>
       <ScrollView
-        contentContainerStyle={[styles.scroll, { paddingTop: topPad + 20, paddingBottom: bottomPad + 20 }]}
+        bounces={false}
+        alwaysBounceVertical={false}
+        contentContainerStyle={[styles.scroll, { paddingTop: headerHeight + 8, paddingBottom: bottomPad + 20 }]}
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.header}>
-          <TouchableOpacity
-            style={[styles.playerBtn, { backgroundColor: colors.card }]}
-            onPress={() => router.push("/(tabs)/profiles")}
-            activeOpacity={0.75}
+        <TouchableOpacity onPress={() => router.push("/setup")} activeOpacity={0.9}>
+          <LinearGradient
+            colors={["#15143A", "#092E3B", "#251845"]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.heroCard}
           >
-            <Text style={{ fontSize: 20 }}>{activeProfile?.avatar ?? "👤"}</Text>
-          </TouchableOpacity>
-          <View style={{ alignItems: "center" }}>
-            <Text style={[styles.appTitle, { color: colors.primary }]}>Math Minute</Text>
-            {activeProfile ? (
-              <Text style={[styles.appSubtitle, { color: colors.mutedForeground }]}>{activeProfile.name}</Text>
-            ) : (
-              <Text style={[styles.appSubtitle, { color: colors.mutedForeground }]}>How fast can you go?</Text>
-            )}
-          </View>
-          <TouchableOpacity
-            style={[styles.settingsBtn, { backgroundColor: colors.card }]}
-            onPress={() => router.push("/setup")}
-            activeOpacity={0.75}
-          >
-            <Feather name="settings" size={18} color={colors.mutedForeground} />
-          </TouchableOpacity>
-        </View>
+            <View style={styles.heroCopy}>
+              <View style={styles.heroEyebrow}>
+                <Image source={MENU_ASSETS.operations} style={styles.eyebrowIcon} resizeMode="contain" />
+                <Text style={styles.heroEyebrowText}>60 second challenge</Text>
+              </View>
+              <Text style={styles.heroTitle}>Math Fuel</Text>
+              <Text style={styles.heroSub} numberOfLines={2}>Solve fast. Power your rocket.</Text>
+              <View style={styles.heroStartPill}>
+                <View style={styles.heroPlayBadge}>
+                  <Feather name="play" size={17} color="#101027" />
+                </View>
+                <Text style={styles.heroStartText}>Start Drill</Text>
+              </View>
+            </View>
+            <Image source={MENU_ASSETS.start} style={styles.heroAsset} resizeMode="contain" />
+          </LinearGradient>
+        </TouchableOpacity>
 
         {/* Dual currency row */}
         {isLoaded && (
           <View style={styles.currencyRow}>
-            <View style={[styles.currencyCard, { backgroundColor: colors.card, borderColor: colors.gold + "55", flex: 1 }]}>
-              <Text style={styles.currencyEmoji}>⭐</Text>
+            <View style={[styles.currencyCard, { backgroundColor: "#16152C", borderColor: colors.gold + "55", flex: 1 }]}>
+              <Image source={MENU_ASSETS.points} style={styles.currencyAsset} resizeMode="contain" />
               <View style={{ flex: 1 }}>
-                <Text style={[styles.currencyValue, { color: colors.gold }]}>{gameData.points.toLocaleString()}</Text>
-                <Text style={[styles.currencyLabel, { color: colors.mutedForeground }]}>Points</Text>
+                <Text style={[styles.currencyValue, { color: colors.gold }]} numberOfLines={1}>{gameData.points.toLocaleString()}</Text>
+                <Text style={[styles.currencyLabel, { color: colors.mutedForeground }]} numberOfLines={1}>Points</Text>
               </View>
-              <View style={[styles.levelBadge, { backgroundColor: colors.primary + "22" }]}>
-                <Text style={[styles.levelBadgeText, { color: colors.primary }]}>Lv {playerLevel}</Text>
+              <View style={styles.currencyMeta}>
+                <View style={[styles.levelBadge, { backgroundColor: colors.primary + "22" }]}>
+                  <Text style={[styles.levelBadgeText, { color: colors.primary }]}>Lv {levelInfo.level}</Text>
+                </View>
+                {unclaimedCount > 0 && (
+                  <TouchableOpacity style={[styles.claimPill, { backgroundColor: colors.gold + "22" }]} onPress={() => router.push("/achievements")}>
+                    <Text style={[styles.claimPillText, { color: colors.gold }]}>+{totalUnclaimed}</Text>
+                  </TouchableOpacity>
+                )}
               </View>
-              {unclaimedCount > 0 && (
-                <TouchableOpacity style={[styles.claimPill, { backgroundColor: colors.gold + "22" }]} onPress={() => router.push("/achievements")}>
-                  <Text style={[styles.claimPillText, { color: colors.gold }]}>+{totalUnclaimed}</Text>
-                </TouchableOpacity>
-              )}
             </View>
-            <View style={[styles.currencyCard, { backgroundColor: colors.card, borderColor: "#00B4D8" + "55", flex: 1 }]}>
-              <Text style={styles.currencyEmoji}>🪙</Text>
+            <View style={[styles.currencyCard, { backgroundColor: "#101F30", borderColor: "#00B4D8" + "55", flex: 1 }]}>
+              <Image source={MENU_ASSETS.starCoin} style={styles.currencyAsset} resizeMode="contain" />
               <View style={{ flex: 1 }}>
-                <Text style={[styles.currencyValue, { color: "#00B4D8" }]}>{gameData.starCoins.toLocaleString()}</Text>
+                <Text style={[styles.currencyValue, { color: "#00B4D8" }]} numberOfLines={1}>{gameData.starCoins.toLocaleString()}</Text>
                 <Text style={[styles.currencyLabel, { color: colors.mutedForeground }]}>
-                  {passiveRate > 0 ? `+${passiveRate}/hr` : "Star Coins"}
+                  {passiveRate > 0 ? `+${passiveRate} Star Coins/min in drills` : "Star Coins"}
                 </Text>
               </View>
             </View>
           </View>
         )}
 
-        {/* Stats */}
-        {isLoaded && gameData.totalGames > 0 && (
-          <View style={styles.statsRow}>
-            {(["add", "sub", "mul", "div"] as Operation[]).map((op) => {
-              const stat = gameData.opStats[op];
-              if (!stat) return null;
-              return (
-                <View key={op} style={[styles.opCard, { backgroundColor: colors.card, borderColor: OP_COLORS[op] + "44" }]}>
-                  <Text style={[styles.opSymbol, { color: OP_COLORS[op] }]}>{OP_SYMBOLS[op]}</Text>
-                  <Text style={[styles.opBest, { color: colors.foreground }]}>{stat.bestDrillScore}</Text>
-                  <Text style={[styles.opLabel, { color: colors.mutedForeground }]}>best</Text>
-                </View>
-              );
-            })}
-          </View>
+        {isLoaded && (
+          <TouchableOpacity
+            style={[styles.xpCard, { backgroundColor: "#15142C", borderColor: "#7C6FFF55" }]}
+            onPress={() => router.push("/account" as any)}
+            activeOpacity={0.84}
+          >
+            <View style={styles.xpHeader}>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={[styles.xpTitle, { color: colors.foreground }]} numberOfLines={1}>
+                  Lv {levelInfo.level} · {levelInfo.title}
+                </Text>
+                <Text style={[styles.xpSub, { color: colors.mutedForeground }]} numberOfLines={1}>
+                  {levelInfo.isMaxLevel
+                    ? `${levelInfo.currentXp.toLocaleString()} lifetime XP · max rank`
+                    : `${levelInfo.xpToNext.toLocaleString()} XP to ${nextLevelTitle}`}
+                </Text>
+              </View>
+              <Text style={[styles.xpValue, { color: "#9AE6FF" }]}>
+                {levelInfo.currentXp.toLocaleString()} XP
+              </Text>
+            </View>
+            <XpBar progress={levelInfo.progress} height={12} />
+          </TouchableOpacity>
         )}
-
-        {/* Primary CTA */}
-        <TouchableOpacity style={[styles.startBtn, { backgroundColor: colors.primary }]} onPress={() => router.push("/setup")} activeOpacity={0.82}>
-          <Feather name="play" size={24} color="#fff" />
-          <Text style={styles.startBtnText}>Start Drill</Text>
-        </TouchableOpacity>
 
         {/* Nav grid */}
         <View style={styles.navGrid}>
@@ -154,15 +210,14 @@ export default function HomeScreen() {
             <TouchableOpacity
               key={item.route}
               style={[styles.navCard, {
-                backgroundColor: colors.card,
-                borderColor: item.highlight ? "#00B4D8" : item.badge ? colors.gold + "66" : colors.border,
-                borderWidth: item.highlight || item.badge ? 1.5 : 1,
+                backgroundColor: "#15142C",
+                borderColor: item.highlight ? "#00B4D8" : item.badge ? colors.gold + "66" : item.color + "44",
               }]}
               onPress={() => router.push(item.route as any)}
               activeOpacity={0.82}
             >
-              <View style={styles.navCardTopRow}>
-                <Text style={styles.navCardEmoji}>{item.emoji}</Text>
+              <View style={[styles.navIconWell, { backgroundColor: item.color + "18" }]}>
+                <Image source={item.asset} style={styles.navAsset} resizeMode="contain" />
                 {item.badge && (
                   <View style={[styles.navBadge, { backgroundColor: item.badgeColor ?? colors.primary }]}>
                     <Text style={styles.navBadgeText}>{item.badge}</Text>
@@ -170,6 +225,7 @@ export default function HomeScreen() {
                 )}
               </View>
               <Text style={[styles.navCardLabel, { color: colors.foreground }]}>{item.label}</Text>
+              <Text style={[styles.navCardSub, { color: colors.mutedForeground }]} numberOfLines={1}>{item.subtitle}</Text>
             </TouchableOpacity>
           ))}
         </View>
@@ -180,7 +236,7 @@ export default function HomeScreen() {
             style={[styles.rocketTeaser, { backgroundColor: "#05051A", borderColor: "#00B4D8" + "55" }]}
             onPress={() => router.push("/rocket")}
           >
-            <Text style={{ fontSize: 22 }}>🚀</Text>
+            <Image source={MENU_ASSETS.rocket} style={styles.rocketAsset} resizeMode="contain" />
             <View style={{ flex: 1 }}>
               <Text style={[styles.rocketTeaserTitle, { color: "#00B4D8" }]}>Rocket Assembly</Text>
               <View style={[styles.rocketTrack, { backgroundColor: colors.border }]}>
@@ -193,9 +249,9 @@ export default function HomeScreen() {
 
         {isLoaded && gameData.totalGames === 0 && (
           <View style={[styles.welcomeCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            <Feather name="info" size={18} color={colors.mutedForeground} />
+            <Image source={MENU_ASSETS.operations} style={styles.welcomeAsset} resizeMode="contain" />
             <Text style={[styles.welcomeText, { color: colors.mutedForeground }]}>
-              Answer math questions to earn points. Decorate your classroom and zoo to earn Star Coins 🪙. Use Star Coins to build your rocket and launch to the moon!
+              Answer math questions to earn Points. Decorate your classroom and adopt animals to earn Star Coins while playing drills.
             </Text>
           </View>
         )}
@@ -206,40 +262,117 @@ export default function HomeScreen() {
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
-  scroll: { paddingHorizontal: 20, gap: 14 },
-  header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: 6 },
-  settingsBtn: { width: 40, height: 40, borderRadius: 12, alignItems: "center", justifyContent: "center" },
-  playerBtn: { width: 40, height: 40, borderRadius: 12, alignItems: "center", justifyContent: "center" },
-  appTitle: { fontSize: 42, fontFamily: "Inter_700Bold", letterSpacing: -1 },
-  appSubtitle: { fontSize: 16, fontFamily: "Inter_400Regular", marginTop: 4 },
+  scroll: { paddingHorizontal: 18, gap: 14 },
+  homeHeader: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 100,
+    minHeight: 112,
+    paddingHorizontal: 18,
+    paddingBottom: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  headerAvatarBtn: {
+    width: 58,
+    height: 58,
+    borderRadius: 18,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1.5,
+    overflow: "hidden",
+  },
+  headerAvatarAsset: { width: 56, height: 56 },
+  headerLogoWrap: {
+    flex: 1,
+    minWidth: 0,
+    height: 76,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  headerLogo: { width: "100%", height: 76 },
+  headerSettingsBtn: {
+    width: 58,
+    height: 58,
+    borderRadius: 18,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1.5,
+  },
+  headerSettingsAsset: { width: 44, height: 44 },
+  heroCard: {
+    minHeight: 176,
+    borderRadius: 24,
+    padding: 20,
+    flexDirection: "row",
+    alignItems: "center",
+    position: "relative",
+    overflow: "hidden",
+    borderWidth: 1.5,
+    borderColor: "rgba(255,255,255,0.12)",
+  },
+  heroCopy: { flex: 1, gap: 9, paddingRight: 130, zIndex: 1 },
+  heroEyebrow: { flexDirection: "row", alignItems: "center", gap: 8 },
+  eyebrowIcon: { width: 28, height: 28 },
+  heroEyebrowText: { color: "#9AE6FF", fontSize: 12, fontFamily: "Inter_700Bold", textTransform: "uppercase", letterSpacing: 0 },
+  heroTitle: { color: "#FFFFFF", fontSize: 27, fontFamily: "Inter_700Bold", lineHeight: 31 },
+  heroSub: { color: "rgba(255,255,255,0.74)", fontSize: 13, fontFamily: "Inter_500Medium", lineHeight: 18 },
+  heroStartPill: {
+    marginTop: 4,
+    alignSelf: "flex-start",
+    minWidth: 142,
+    height: 48,
+    paddingLeft: 10,
+    paddingRight: 18,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 9,
+    borderRadius: 16,
+    backgroundColor: "#FFD166",
+    shadowColor: "#FFD166",
+    shadowOpacity: 0.25,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+  },
+  heroPlayBadge: { width: 28, height: 28, borderRadius: 9, backgroundColor: "rgba(255,255,255,0.48)", alignItems: "center", justifyContent: "center" },
+  heroStartText: { color: "#09091A", fontSize: 14, fontFamily: "Inter_700Bold" },
+  heroAsset: { position: "absolute", right: 12, bottom: 16, width: 108, height: 108, opacity: 0.98 },
   currencyRow: { flexDirection: "row", gap: 10 },
-  currencyCard: { borderRadius: 16, paddingHorizontal: 14, paddingVertical: 12, flexDirection: "row", alignItems: "center", gap: 8, borderWidth: 1.5 },
-  currencyEmoji: { fontSize: 22 },
-  currencyValue: { fontSize: 22, fontFamily: "Inter_700Bold" },
-  currencyLabel: { fontSize: 11, fontFamily: "Inter_500Medium" },
+  currencyCard: { minHeight: 76, borderRadius: 18, paddingHorizontal: 10, paddingVertical: 10, flexDirection: "row", alignItems: "center", gap: 8, borderWidth: 1.5 },
+  currencyAsset: { width: 36, height: 36 },
+  currencyValue: { fontSize: 20, fontFamily: "Inter_700Bold", includeFontPadding: false },
+  currencyLabel: { fontSize: 10, fontFamily: "Inter_600SemiBold" },
+  currencyMeta: { alignItems: "flex-end", gap: 5 },
   levelBadge: { borderRadius: 8, paddingHorizontal: 7, paddingVertical: 3 },
   levelBadgeText: { fontSize: 11, fontFamily: "Inter_700Bold" },
   claimPill: { borderRadius: 10, paddingHorizontal: 8, paddingVertical: 4 },
   claimPillText: { fontSize: 12, fontFamily: "Inter_700Bold" },
-  statsRow: { flexDirection: "row", gap: 8 },
-  opCard: { flex: 1, borderRadius: 14, padding: 10, alignItems: "center", gap: 2, borderWidth: 1.5 },
-  opSymbol: { fontSize: 20, fontFamily: "Inter_700Bold" },
-  opBest: { fontSize: 16, fontFamily: "Inter_700Bold" },
-  opLabel: { fontSize: 10, fontFamily: "Inter_400Regular", textTransform: "uppercase", letterSpacing: 0.5 },
+  xpCard: { borderRadius: 18, borderWidth: 1.5, padding: 13, gap: 10 },
+  xpHeader: { flexDirection: "row", alignItems: "center", gap: 10 },
+  xpTitle: { fontSize: 17, fontFamily: "Inter_700Bold" },
+  xpSub: { marginTop: 2, fontSize: 12, fontFamily: "Inter_600SemiBold" },
+  xpValue: { fontSize: 13, fontFamily: "Inter_700Bold" },
   startBtn: { borderRadius: 18, paddingVertical: 18, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 10 },
   startBtnText: { fontSize: 20, fontFamily: "Inter_700Bold", color: "#fff" },
   navGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
-  navCard: { width: "30.5%", borderRadius: 16, paddingVertical: 14, alignItems: "center", gap: 6, borderWidth: 1 },
-  navCardTopRow: { position: "relative", alignItems: "center" },
-  navCardEmoji: { fontSize: 26 },
-  navBadge: { position: "absolute", top: -4, right: -18, borderRadius: 8, paddingHorizontal: 5, paddingVertical: 1 },
-  navBadgeText: { fontSize: 9, fontFamily: "Inter_700Bold", color: "#000" },
-  navCardLabel: { fontSize: 11, fontFamily: "Inter_600SemiBold", textAlign: "center" },
+  navCard: { width: "48.5%", minHeight: 142, borderRadius: 22, padding: 12, alignItems: "center", justifyContent: "center", gap: 6, borderWidth: 1.5 },
+  navIconWell: { width: 72, height: 72, borderRadius: 20, alignItems: "center", justifyContent: "center", position: "relative" },
+  navAsset: { width: 68, height: 68 },
+  navBadge: { position: "absolute", top: -5, right: -8, borderRadius: 10, paddingHorizontal: 7, paddingVertical: 3 },
+  navBadgeText: { fontSize: 10, fontFamily: "Inter_700Bold", color: "#000" },
+  navCardLabel: { fontSize: 15, fontFamily: "Inter_700Bold", textAlign: "center" },
+  navCardSub: { fontSize: 11, fontFamily: "Inter_500Medium", textAlign: "center" },
   rocketTeaser: { borderRadius: 16, padding: 14, flexDirection: "row", alignItems: "center", gap: 12, borderWidth: 1.5 },
+  rocketAsset: { width: 44, height: 44 },
   rocketTeaserTitle: { fontSize: 13, fontFamily: "Inter_600SemiBold", marginBottom: 6 },
   rocketTrack: { height: 5, borderRadius: 3, overflow: "hidden" },
   rocketFill: { height: "100%", borderRadius: 3 },
   rocketFraction: { fontSize: 14, fontFamily: "Inter_700Bold" },
-  welcomeCard: { borderRadius: 14, padding: 16, flexDirection: "row", gap: 12, borderWidth: 1, alignItems: "flex-start" },
+  welcomeCard: { borderRadius: 18, padding: 14, flexDirection: "row", gap: 12, borderWidth: 1, alignItems: "center" },
+  welcomeAsset: { width: 42, height: 42 },
   welcomeText: { flex: 1, fontSize: 13, fontFamily: "Inter_400Regular", lineHeight: 20 },
 });

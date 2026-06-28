@@ -3,6 +3,7 @@ import { router } from "expo-router";
 import React, { useEffect, useRef } from "react";
 import {
   Animated,
+  Image,
   Platform,
   ScrollView,
   StyleSheet,
@@ -10,12 +11,21 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { ACHIEVEMENT_BADGE_ASSETS } from "@/constants/achievementAssets";
 import { ACHIEVEMENTS } from "@/constants/achievements";
+import { SOLAR_SYSTEM } from "@/constants/planets";
+import { RESULT_ASSETS } from "@/constants/resultAssets";
+import { GEM_ASSETS } from "@/constants/workshopAssets";
 import { useGame } from "@/context/GameContext";
 import { useColors } from "@/hooks/useColors";
 import { getOpLabel } from "@/utils/mathUtils";
 import type { Operation } from "@/constants/achievements";
+import { PinnedHeader, usePinnedHeaderHeight } from "@/components/PinnedHeader";
+import { XpBar } from "@/components/XpBar";
+import { useProfiles } from "@/context/ProfileContext";
+import { submitLeaderboardScore } from "@/utils/leaderboard";
 
 const OP_COLORS: Record<Operation, string> = {
   add: "#7C6FFF",
@@ -24,17 +34,39 @@ const OP_COLORS: Record<Operation, string> = {
   div: "#FF9F43",
 };
 
+function getAchievementCategory(id: string) {
+  if (id.startsWith("add_")) return "add";
+  if (id.startsWith("sub_")) return "sub";
+  if (id.startsWith("mul_")) return "mul";
+  if (id.startsWith("div_")) return "div";
+  if (id.startsWith("score_")) return "score";
+  if (id.startsWith("streak_")) return "streak";
+  if (id.startsWith("drills_")) return "drills";
+  return "special";
+}
+
+const formatReward = (value: number) =>
+  Number.isInteger(value)
+    ? value.toLocaleString()
+    : value.toLocaleString(undefined, {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      });
+
 export default function ResultsScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { lastSession, gameData, getLevel, getDrillMultiplier, getDrillCoinBonus } = useGame();
+  const { lastSession, gameData, getLevel, getLevelInfo, getDrillMultiplier, getDrillCoinBonus } = useGame();
+  const { activeProfile } = useProfiles();
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const bottomPad = Platform.OS === "web" ? 34 : insets.bottom;
+  const headerHeight = usePinnedHeaderHeight();
 
   const scoreAnim = useRef(new Animated.Value(0)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const pointsAnim = useRef(new Animated.Value(0)).current;
+  const submittedScoreKey = useRef<string | null>(null);
 
   useEffect(() => {
     Animated.parallel([
@@ -61,6 +93,25 @@ export default function ResultsScreen() {
     ]).start();
   }, [fadeAnim, scoreAnim, pointsAnim]);
 
+  useEffect(() => {
+    if (!lastSession || !activeProfile) return;
+    const key = `${activeProfile.id}:${lastSession.totalGames}:${lastSession.score}:${lastSession.difficulty}`;
+    if (submittedScoreKey.current === key) return;
+    submittedScoreKey.current = key;
+    submitLeaderboardScore({
+      playerId: activeProfile.id,
+      playerName: activeProfile.name,
+      avatar: activeProfile.avatar,
+      score: lastSession.score,
+      difficulty: lastSession.difficulty,
+      operations: lastSession.operations,
+      timeLimit: lastSession.timeLimit,
+      maxStreak: lastSession.maxStreak,
+      pointsEarned: lastSession.pointsEarned,
+      starCoinsEarned: lastSession.starCoinsEarned,
+    }).catch(() => {});
+  }, [activeProfile, lastSession]);
+
   if (!lastSession) {
     return (
       <View style={[styles.root, { backgroundColor: colors.background }]}>
@@ -80,6 +131,8 @@ export default function ResultsScreen() {
   const { score, correctByOp, maxStreak, operations, pointsEarned } =
     lastSession as any;
   const starCoinsEarned: number = (lastSession as any).starCoinsEarned ?? 0;
+  const planetGemsEarned: Record<string, number> = (lastSession as any).planetGemsEarned ?? {};
+  const gemRewardEntries = Object.entries(planetGemsEarned).filter(([, amount]) => amount > 0);
   const newAchievementIds: string[] = (lastSession as any).newAchievements ?? [];
   const newAchievements = ACHIEVEMENTS.filter((a) =>
     newAchievementIds.includes(a.id)
@@ -99,6 +152,10 @@ export default function ResultsScreen() {
   const prevPoints = gameData.points - pointsEarned;
   const prevLevel = getLevel(prevPoints < 0 ? 0 : prevPoints);
   const didLevelUp = currentLevel > prevLevel;
+  const levelInfo = getLevelInfo(gameData.points);
+  const nextLevelTitle = levelInfo.nextLevelXp
+    ? getLevelInfo(levelInfo.nextLevelXp).title
+    : levelInfo.title;
 
   const scoreScale = scoreAnim.interpolate({
     inputRange: [0, 1],
@@ -112,38 +169,30 @@ export default function ResultsScreen() {
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
+      <PinnedHeader title="Results" />
       <ScrollView
-        contentContainerStyle={[
-          styles.scroll,
-          { paddingTop: topPad + 24, paddingBottom: bottomPad + 24 },
-        ]}
+        bounces={false}
+        alwaysBounceVertical={false}
+        contentContainerStyle={[styles.scroll, { paddingTop: headerHeight + 8, paddingBottom: bottomPad + 24 }]}
         showsVerticalScrollIndicator={false}
       >
         <Animated.View style={[styles.content, { opacity: fadeAnim }]}>
-          <Text style={[styles.title, { color: colors.foreground }]}>
-            Time's Up!
-          </Text>
-
-          {/* Score */}
-          <Animated.View
-            style={[
-              styles.scoreCircle,
-              {
-                backgroundColor: colors.primary + "22",
-                borderColor: colors.primary,
-                transform: [{ scale: scoreScale }],
-              },
-            ]}
+          <LinearGradient
+            colors={["#17153A", "#092B3B", "#21163C"]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.heroCard}
           >
-            <Text style={[styles.scoreNumber, { color: colors.primary }]}>
-              {score}
-            </Text>
-            <Text
-              style={[styles.scoreLabel, { color: colors.mutedForeground }]}
-            >
-              correct
-            </Text>
-          </Animated.View>
+            <View style={styles.heroCopy}>
+              <Text style={[styles.title, { color: colors.foreground }]}>Drill Complete</Text>
+              <Text style={[styles.heroSub, { color: colors.mutedForeground }]}>Rewards added while you played</Text>
+            </View>
+            <Animated.View style={[styles.scoreOrb, { borderColor: colors.primary, transform: [{ scale: scoreScale }] }]}>
+              <Image source={RESULT_ASSETS.trophy} style={styles.scoreTrophy} resizeMode="contain" />
+              <Text style={[styles.scoreNumber, { color: colors.primary }]}>{score}</Text>
+              <Text style={[styles.scoreLabel, { color: colors.mutedForeground }]}>correct</Text>
+            </Animated.View>
+          </LinearGradient>
 
           {isPersonalBest && score > 0 && (
             <View
@@ -152,7 +201,7 @@ export default function ResultsScreen() {
                 { backgroundColor: colors.gold + "22" },
               ]}
             >
-              <Feather name="award" size={16} color={colors.gold} />
+              <Image source={RESULT_ASSETS.personalBest} style={styles.badgeAsset} resizeMode="contain" />
               <Text style={[styles.pbText, { color: colors.gold }]}>
                 Personal Best!
               </Text>
@@ -162,14 +211,19 @@ export default function ResultsScreen() {
           {/* Level Up banner */}
           {didLevelUp && (
             <View style={[styles.levelUpBanner, { backgroundColor: "#7C6FFF22", borderColor: "#7C6FFF" }]}>
-              <Text style={styles.levelUpEmoji}>🎉</Text>
-              <Text style={[styles.levelUpText, { color: "#7C6FFF" }]}>
-                Level Up! → Lv {currentLevel}
-              </Text>
+              <Image source={RESULT_ASSETS.trophy} style={styles.levelUpAsset} resizeMode="contain" />
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.levelUpText, { color: "#7C6FFF" }]}>
+                  Level Up! Lv {prevLevel} → Lv {currentLevel}
+                </Text>
+                <Text style={[styles.levelUpSub, { color: colors.mutedForeground }]} numberOfLines={1}>
+                  {levelInfo.title}
+                </Text>
+              </View>
             </View>
           )}
 
-          {/* Points earned */}
+          {/* XP and points earned */}
           <Animated.View
             style={[
               styles.pointsCard,
@@ -180,10 +234,10 @@ export default function ResultsScreen() {
               },
             ]}
           >
-            <Text style={styles.pointsEmoji}>⭐</Text>
+            <Image source={RESULT_ASSETS.points} style={styles.rewardAsset} resizeMode="contain" />
             <View style={{ flex: 1 }}>
               <Text style={[styles.pointsEarned, { color: colors.gold }]}>
-                +{pointsEarned} points earned!
+                +{formatReward(pointsEarned)} XP gained!
               </Text>
               <Text
                 style={[
@@ -191,7 +245,15 @@ export default function ResultsScreen() {
                   { color: colors.mutedForeground },
                 ]}
               >
-                Balance: {gameData.points.toLocaleString()} pts · Lv {currentLevel}
+                {formatReward(gameData.points)} Points · {levelInfo.title}
+              </Text>
+              <View style={styles.resultXpBarWrap}>
+                <XpBar progress={levelInfo.progress} height={11} />
+              </View>
+              <Text style={[styles.resultXpMeta, { color: colors.mutedForeground }]} numberOfLines={1}>
+                {levelInfo.isMaxLevel
+                  ? "Maximum rank reached"
+                  : `${levelInfo.xpToNext.toLocaleString()} XP to ${nextLevelTitle}`}
               </Text>
             </View>
             {totalBonusAvail > 0 && (
@@ -203,24 +265,46 @@ export default function ResultsScreen() {
 
           {/* Star Coins earned */}
           <View style={[styles.coinsCard, { backgroundColor: "#00B4D818", borderColor: "#00B4D866" }]}>
-            <Text style={styles.coinsEmoji}>🪙</Text>
+            <Image source={RESULT_ASSETS.starCoins} style={styles.rewardAsset} resizeMode="contain" />
             <View style={{ flex: 1 }}>
               <Text style={[styles.coinsEarned, { color: "#00B4D8" }]}>
-                +{starCoinsEarned} star coins this drill!
+                +{formatReward(starCoinsEarned)} Star Coins this drill!
               </Text>
               <Text style={[styles.coinsBalance, { color: colors.mutedForeground }]}>
-                Balance: {gameData.starCoins.toLocaleString()} 🪙
+                Balance: {formatReward(gameData.starCoins)} Star Coins
               </Text>
             </View>
           </View>
+
+          {gemRewardEntries.length > 0 && (
+            <View style={[styles.gemRewardCard, { backgroundColor: "#7C6FFF18", borderColor: "#7C6FFF66" }]}>
+              <View style={styles.gemRewardHead}>
+                <Feather name="tool" size={20} color="#B8A9FF" />
+                <Text style={[styles.gemRewardTitle, { color: colors.foreground }]}>Workshop stones found</Text>
+              </View>
+              <View style={styles.gemRewardRow}>
+                {gemRewardEntries.map(([planetId, amount]) => {
+                  const planet = SOLAR_SYSTEM.find((body) => body.id === planetId);
+                  return (
+                    <View key={planetId} style={styles.gemRewardPill}>
+                      <Image source={GEM_ASSETS[planetId]} style={styles.gemRewardIcon} resizeMode="contain" />
+                      <Text style={styles.gemRewardText}>
+                        +{amount} {planet?.name ?? "Stone"}
+                      </Text>
+                    </View>
+                  );
+                })}
+              </View>
+            </View>
+          )}
 
           {/* Invention bonus line */}
           {hasInventionBonus && (
             <View style={[styles.inventionBonusRow, { backgroundColor: "#9C27B011", borderColor: "#9C27B044" }]}>
               <Text style={[styles.inventionBonusText, { color: "#CE93D8" }]}>
-                ⚗️{drillMultiplier > 1 ? ` ×${drillMultiplier.toFixed(2)} multiplier` : ""}
+                {drillMultiplier > 1 ? `×${drillMultiplier.toFixed(2)} multiplier` : ""}
                 {drillMultiplier > 1 && drillCoinBonus > 0 ? "  ·" : ""}
-                {drillCoinBonus > 0 ? `  +${drillCoinBonus} 🪙/answer` : ""}
+                {drillCoinBonus > 0 ? `  +${drillCoinBonus} Star Coins/answer` : ""}
                 {" "}invention bonus active
               </Text>
             </View>
@@ -237,7 +321,7 @@ export default function ResultsScreen() {
                 },
               ]}
             >
-              <Feather name="zap" size={18} color={colors.gold} />
+              <Image source={RESULT_ASSETS.streak} style={styles.statAsset} resizeMode="contain" />
               <Text style={[styles.statVal, { color: colors.foreground }]}>
                 {maxStreak}
               </Text>
@@ -253,7 +337,7 @@ export default function ResultsScreen() {
                 { backgroundColor: colors.card, borderColor: colors.border },
               ]}
             >
-              <Feather name="layers" size={18} color={colors.accent} />
+              <Image source={RESULT_ASSETS.operations} style={styles.statAsset} resizeMode="contain" />
               <Text style={[styles.statVal, { color: colors.foreground }]}>
                 {operations.length}
               </Text>
@@ -322,7 +406,7 @@ export default function ResultsScreen() {
                   { color: colors.mutedForeground },
                 ]}
               >
-                NEW BADGES 🎉
+                NEW BADGES
               </Text>
               <View style={styles.newAchList}>
                 {newAchievements.map((ach) => (
@@ -336,10 +420,10 @@ export default function ResultsScreen() {
                       },
                     ]}
                   >
-                    <Feather
-                      name={ach.icon as any}
-                      size={18}
-                      color={ach.color}
+                    <Image
+                      source={ACHIEVEMENT_BADGE_ASSETS[getAchievementCategory(ach.id)]}
+                      style={styles.achAsset}
+                      resizeMode="contain"
                     />
                     <Text
                       style={[styles.newAchTitle, { color: colors.foreground }]}
@@ -349,7 +433,7 @@ export default function ResultsScreen() {
                     <Text
                       style={[styles.newAchBonus, { color: colors.gold }]}
                     >
-                      +{ach.bonusPoints} pts
+                      +{ach.bonusPoints} Points
                     </Text>
                   </View>
                 ))}
@@ -361,7 +445,7 @@ export default function ResultsScreen() {
                   onPress={() => router.push("/achievements")}
                 >
                   <Text style={[styles.claimCTAText, { color: colors.gold }]}>
-                    🎁 Claim bonus points on Achievements page
+                    Claim bonus Points on Achievements page
                   </Text>
                 </TouchableOpacity>
               </View>
@@ -375,7 +459,7 @@ export default function ResultsScreen() {
               onPress={() => router.replace("/setup")}
               activeOpacity={0.82}
             >
-              <Feather name="refresh-cw" size={18} color="#fff" />
+              <Image source={RESULT_ASSETS.playAgain} style={styles.playAgainAsset} resizeMode="contain" />
               <Text style={styles.playAgainText}>Play Again</Text>
             </TouchableOpacity>
             <TouchableOpacity
@@ -400,9 +484,35 @@ export default function ResultsScreen() {
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
-  scroll: { paddingHorizontal: 20 },
+  scroll: { paddingHorizontal: 20, gap: 18 },
+  header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", zIndex: 10 },
+  headerBtn: { width: 48, height: 48, borderRadius: 15, alignItems: "center", justifyContent: "center" },
+  headerTitle: { fontSize: 24, fontFamily: "Inter_700Bold" },
   content: { gap: 18, alignItems: "center" },
-  title: { fontSize: 36, fontFamily: "Inter_700Bold", textAlign: "center" },
+  heroCard: {
+    width: "100%",
+    minHeight: 174,
+    borderRadius: 26,
+    padding: 18,
+    flexDirection: "row",
+    alignItems: "center",
+    borderWidth: 1.5,
+    borderColor: "rgba(124,111,255,0.28)",
+    overflow: "hidden",
+  },
+  heroCopy: { flex: 1, gap: 6 },
+  title: { fontSize: 30, fontFamily: "Inter_700Bold" },
+  heroSub: { fontSize: 13, fontFamily: "Inter_600SemiBold", lineHeight: 18 },
+  scoreOrb: {
+    width: 132,
+    height: 132,
+    borderRadius: 66,
+    borderWidth: 3,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(124,111,255,0.14)",
+  },
+  scoreTrophy: { position: "absolute", top: -18, width: 58, height: 58 },
   scoreCircle: {
     width: 160,
     height: 160,
@@ -421,12 +531,13 @@ const styles = StyleSheet.create({
   },
   pbBadge: {
     flexDirection: "row",
-    gap: 6,
+    gap: 7,
     alignItems: "center",
     paddingHorizontal: 14,
-    paddingVertical: 7,
-    borderRadius: 20,
+    paddingVertical: 8,
+    borderRadius: 18,
   },
+  badgeAsset: { width: 24, height: 24 },
   pbText: { fontSize: 15, fontFamily: "Inter_600SemiBold" },
   levelUpBanner: {
     flexDirection: "row",
@@ -438,8 +549,9 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     width: "100%",
   },
-  levelUpEmoji: { fontSize: 22 },
+  levelUpAsset: { width: 34, height: 34 },
   levelUpText: { fontSize: 17, fontFamily: "Inter_700Bold" },
+  levelUpSub: { marginTop: 2, fontSize: 12, fontFamily: "Inter_600SemiBold" },
   pointsCard: {
     flexDirection: "row",
     alignItems: "center",
@@ -449,9 +561,11 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     padding: 16,
   },
-  pointsEmoji: { fontSize: 28 },
+  rewardAsset: { width: 48, height: 48 },
   pointsEarned: { fontSize: 18, fontFamily: "Inter_700Bold" },
   pointsBalance: { fontSize: 12, fontFamily: "Inter_400Regular", marginTop: 2 },
+  resultXpBarWrap: { marginTop: 8 },
+  resultXpMeta: { marginTop: 4, fontSize: 11, fontFamily: "Inter_600SemiBold" },
   bonusHint: {
     fontSize: 12,
     fontFamily: "Inter_700Bold",
@@ -466,18 +580,43 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     padding: 16,
   },
-  coinsEmoji: { fontSize: 28 },
   coinsEarned: { fontSize: 16, fontFamily: "Inter_700Bold" },
   coinsBalance: { fontSize: 12, fontFamily: "Inter_400Regular", marginTop: 2 },
+  gemRewardCard: {
+    width: "100%",
+    borderRadius: 16,
+    borderWidth: 1.5,
+    padding: 14,
+    gap: 10,
+  },
+  gemRewardHead: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  gemRewardTitle: { fontSize: 15, fontFamily: "Inter_700Bold" },
+  gemRewardRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  gemRewardPill: {
+    minHeight: 38,
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    backgroundColor: "rgba(7, 10, 30, 0.72)",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  gemRewardIcon: { width: 24, height: 24 },
+  gemRewardText: { color: "#DCD7FF", fontSize: 12, fontFamily: "Inter_700Bold" },
   statsRow: { flexDirection: "row", gap: 12, width: "100%" },
   statCard: {
     flex: 1,
     borderRadius: 16,
-    padding: 16,
+    padding: 15,
     alignItems: "center",
     gap: 4,
     borderWidth: 1,
   },
+  statAsset: { width: 38, height: 38 },
   statVal: { fontSize: 28, fontFamily: "Inter_700Bold" },
   statLbl: {
     fontSize: 11,
@@ -501,6 +640,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     borderWidth: 1,
   },
+  achAsset: { width: 34, height: 34 },
   opDot: { width: 8, height: 8, borderRadius: 4 },
   opName: { flex: 1, fontSize: 14, fontFamily: "Inter_500Medium" },
   opCount: { fontSize: 22, fontFamily: "Inter_700Bold" },
@@ -536,6 +676,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: 8,
   },
+  playAgainAsset: { width: 32, height: 32 },
   playAgainText: { fontSize: 17, fontFamily: "Inter_700Bold", color: "#fff" },
   homeBtn2: {
     width: 56,

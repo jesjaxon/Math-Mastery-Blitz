@@ -2,25 +2,28 @@ import { Feather } from "@expo/vector-icons";
 import { router } from "expo-router";
 import React from "react";
 import {
-  Alert,
+  Image,
+  type ImageSourcePropType,
   Platform,
   ScrollView,
   StyleSheet,
-  Switch,
   Text,
   TouchableOpacity,
   View,
 } from "react-native";
+import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useGame, type GameSettings } from "@/context/GameContext";
+import { useGame } from "@/context/GameContext";
 import { useColors } from "@/hooks/useColors";
 import type { Difficulty, Operation } from "@/constants/achievements";
+import { START_DRILL_ASSETS } from "@/constants/startDrillAssets";
+import { PinnedHeader, usePinnedHeaderHeight } from "@/components/PinnedHeader";
 
-const OPERATIONS: { id: Operation; symbol: string; label: string; color: string }[] = [
-  { id: "add", symbol: "+", label: "Add", color: "#7C6FFF" },
-  { id: "sub", symbol: "−", label: "Subtract", color: "#FF6B9D" },
-  { id: "mul", symbol: "×", label: "Multiply", color: "#00D9A3" },
-  { id: "div", symbol: "÷", label: "Divide", color: "#FF9F43" },
+const OPERATIONS: { id: Operation; label: string; color: string; asset: ImageSourcePropType }[] = [
+  { id: "add", label: "Add", color: "#8A6CFF", asset: START_DRILL_ASSETS.operationAdd },
+  { id: "sub", label: "Subtract", color: "#FF6BBA", asset: START_DRILL_ASSETS.operationSubtract },
+  { id: "mul", label: "Multiply", color: "#00D9E8", asset: START_DRILL_ASSETS.operationMultiply },
+  { id: "div", label: "Divide", color: "#FFB13B", asset: START_DRILL_ASSETS.operationDivide },
 ];
 
 const TIME_OPTIONS = [
@@ -42,14 +45,11 @@ export default function SetupScreen() {
   const {
     settings,
     updateSettings,
-    resetGameProgress,
-    resetAchievements,
-    gameData,
-    setDevUnlimitedMoney,
   } = useGame();
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const bottomPad = Platform.OS === "web" ? 34 : insets.bottom;
+  const headerHeight = usePinnedHeaderHeight();
 
   const toggleOp = (op: Operation) => {
     const current = settings.operations;
@@ -67,49 +67,23 @@ export default function SetupScreen() {
 
   const canStart = settings.operations.length > 0;
 
-  const confirmReset = () => {
-    Alert.alert("Reset progress?", "This clears all game progress and currencies.", [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Reset",
-        style: "destructive",
-        onPress: resetGameProgress,
-      },
-    ]);
-  };
-
-  const confirmResetAchievements = () => {
-    Alert.alert("Reset achievements?", "This clears all unlocked achievements and bonuses.", [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Reset",
-        style: "destructive",
-        onPress: resetAchievements,
-      },
-    ]);
-  };
-
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
+      <PinnedHeader title="New Drill" />
       <ScrollView
+        bounces={false}
+        alwaysBounceVertical={false}
         contentContainerStyle={[
           styles.scroll,
-          { paddingTop: topPad + 12, paddingBottom: bottomPad + 24 },
+          { paddingTop: headerHeight + 8, paddingBottom: bottomPad + 24 },
         ]}
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.header}>
-          <TouchableOpacity style={[styles.backBtn, { backgroundColor: colors.card }]} onPress={() => router.back()}>
-            <Feather name="arrow-left" size={20} color={colors.foreground} />
-          </TouchableOpacity>
-          <Text style={[styles.title, { color: colors.foreground }]}>New Drill</Text>
-          <View style={{ width: 40 }} />
-        </View>
-
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Operations</Text>
-            <TouchableOpacity onPress={selectAll}>
+            <TouchableOpacity style={styles.selectAllBtn} onPress={selectAll}>
+              <Image source={START_DRILL_ASSETS.selectAll} style={styles.selectAllAsset} resizeMode="contain" />
               <Text style={[styles.selectAll, { color: colors.primary }]}>All</Text>
             </TouchableOpacity>
           </View>
@@ -130,11 +104,11 @@ export default function SetupScreen() {
                   onPress={() => toggleOp(op.id)}
                   activeOpacity={0.75}
                 >
-                  <Text style={[styles.opSymbol, { color: op.color }]}>{op.symbol}</Text>
+                  <Image source={op.asset} style={styles.opAsset} resizeMode="contain" />
                   <Text style={[styles.opLabel, { color: selected ? colors.foreground : colors.mutedForeground }]}>
                     {op.label}
                   </Text>
-                  {selected && <View style={[styles.checkDot, { backgroundColor: op.color }]} />}
+                  {selected && <Image source={START_DRILL_ASSETS.selectedRing} style={styles.selectedAsset} resizeMode="contain" />}
                 </TouchableOpacity>
               );
             })}
@@ -142,7 +116,10 @@ export default function SetupScreen() {
         </View>
 
         <View style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Time Limit</Text>
+          <View style={styles.iconTitleRow}>
+            <Image source={START_DRILL_ASSETS.timeLimit} style={styles.sectionIcon} resizeMode="contain" />
+            <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Time Limit</Text>
+          </View>
           <View style={styles.timeRow}>
             {TIME_OPTIONS.map((t) => {
               const selected = settings.timeLimit === t.value;
@@ -169,7 +146,10 @@ export default function SetupScreen() {
         </View>
 
         <View style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Difficulty</Text>
+          <View style={styles.iconTitleRow}>
+            <Image source={START_DRILL_ASSETS.difficulty} style={styles.sectionIcon} resizeMode="contain" />
+            <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Difficulty</Text>
+          </View>
           <View style={styles.diffRow}>
             {DIFFICULTY_OPTIONS.map((d) => {
               const selected = settings.difficulty === d.id;
@@ -197,43 +177,26 @@ export default function SetupScreen() {
           </View>
         </View>
 
-        <View style={[styles.section, { gap: 10 }]}>
-          <View style={[styles.devCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            <View style={styles.devRow}>
-              <View>
-                <Text style={[styles.devTitle, { color: colors.foreground }]}>Dev mode</Text>
-                <Text style={[styles.devSub, { color: colors.mutedForeground }]}>Unlimited money for testing purchases</Text>
-              </View>
-              <Switch
-                value={settings.devUnlimitedMoney}
-                onValueChange={setDevUnlimitedMoney}
-              />
-            </View>
-            <Text style={[styles.devHint, { color: colors.mutedForeground }]}>Owned: {gameData.ownedItems.length} items · Animals: {gameData.aquariumAnimals.length + gameData.zooAnimals.length} · Rocket parts: {gameData.rocketPartsOwned.length}/6</Text>
-          </View>
-          <View style={styles.devActions}>
-            <TouchableOpacity style={[styles.devActionBtn, { backgroundColor: colors.card, borderColor: colors.border }]} onPress={confirmReset}>
-              <Feather name="refresh-cw" size={16} color={colors.foreground} />
-              <Text style={[styles.devActionText, { color: colors.foreground }]}>Reset game</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={[styles.devActionBtn, { backgroundColor: colors.card, borderColor: colors.border }]} onPress={confirmResetAchievements}>
-              <Feather name="award" size={16} color={colors.foreground} />
-              <Text style={[styles.devActionText, { color: colors.foreground }]}>Reset achievements</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-
         <TouchableOpacity
           style={[
             styles.startBtn,
-            { backgroundColor: canStart ? colors.primary : colors.muted },
+            { opacity: canStart ? 1 : 0.48 },
           ]}
           onPress={() => canStart && router.push("/game")}
           activeOpacity={0.82}
           disabled={!canStart}
         >
-          <Feather name="zap" size={22} color="#fff" />
-          <Text style={styles.startBtnText}>Start!</Text>
+          <LinearGradient
+            colors={canStart ? ["#7C6FFF", "#8F52FF", "#00B4D8"] : ["#292845", "#22213A"]}
+            start={{ x: 0, y: 0.5 }}
+            end={{ x: 1, y: 0.5 }}
+            style={styles.startBtnBg}
+          >
+            <View style={styles.startIconWell}>
+              <Image source={START_DRILL_ASSETS.difficulty} style={styles.startIconAsset} resizeMode="contain" />
+            </View>
+            <Text style={styles.startBtnText}>Start!</Text>
+          </LinearGradient>
         </TouchableOpacity>
       </ScrollView>
     </View>
@@ -243,18 +206,24 @@ export default function SetupScreen() {
 const styles = StyleSheet.create({
   root: { flex: 1 },
   scroll: { paddingHorizontal: 20, gap: 24 },
-  header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  backBtn: { width: 40, height: 40, borderRadius: 12, alignItems: "center", justifyContent: "center" },
+  header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", zIndex: 10 },
+  backBtn: { width: 48, height: 48, alignItems: "center", justifyContent: "center" },
+  headerIconBtn: { width: 44, height: 44, borderRadius: 14, alignItems: "center", justifyContent: "center" },
+  backAsset: { width: 54, height: 54 },
   title: { fontSize: 22, fontFamily: "Inter_700Bold" },
   section: { gap: 12 },
   sectionHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  iconTitleRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+  sectionIcon: { width: 34, height: 34 },
   sectionTitle: { fontSize: 16, fontFamily: "Inter_600SemiBold" },
+  selectAllBtn: { flexDirection: "row", alignItems: "center", justifyContent: "flex-end", gap: 4, minHeight: 34, maxWidth: 88, overflow: "hidden" },
+  selectAllAsset: { width: 24, height: 24 },
   selectAll: { fontSize: 14, fontFamily: "Inter_600SemiBold" },
   opsGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
-  opBtn: { width: "47%", borderRadius: 16, padding: 16, alignItems: "center", gap: 6, position: "relative" },
-  opSymbol: { fontSize: 32, fontFamily: "Inter_700Bold" },
+  opBtn: { width: "47%", borderRadius: 18, paddingHorizontal: 12, paddingVertical: 13, alignItems: "center", gap: 4, position: "relative", minHeight: 132, overflow: "hidden" },
+  opAsset: { width: 76, height: 76 },
   opLabel: { fontSize: 14, fontFamily: "Inter_500Medium" },
-  checkDot: { position: "absolute", top: 10, right: 10, width: 8, height: 8, borderRadius: 4 },
+  selectedAsset: { position: "absolute", top: 8, right: 8, width: 22, height: 22 },
   timeRow: { flexDirection: "row", gap: 10 },
   timeBtn: { flex: 1, borderRadius: 14, paddingVertical: 14, alignItems: "center", borderWidth: 1 },
   timeBtnText: { fontSize: 15, fontFamily: "Inter_600SemiBold" },
@@ -262,14 +231,9 @@ const styles = StyleSheet.create({
   diffBtn: { flex: 1, borderRadius: 14, paddingVertical: 14, paddingHorizontal: 8, alignItems: "center", gap: 4 },
   diffLabel: { fontSize: 15, fontFamily: "Inter_700Bold" },
   diffDesc: { fontSize: 11, fontFamily: "Inter_400Regular", textAlign: "center" },
-  devCard: { borderRadius: 16, padding: 14, borderWidth: 1, gap: 10 },
-  devRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 },
-  devTitle: { fontSize: 15, fontFamily: "Inter_700Bold" },
-  devSub: { fontSize: 12, fontFamily: "Inter_400Regular", marginTop: 2 },
-  devHint: { fontSize: 12, fontFamily: "Inter_400Regular" },
-  devActions: { flexDirection: "row", gap: 10 },
-  devActionBtn: { flex: 1, borderRadius: 14, paddingVertical: 12, paddingHorizontal: 10, borderWidth: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8 },
-  devActionText: { fontSize: 13, fontFamily: "Inter_600SemiBold" },
-  startBtn: { borderRadius: 18, paddingVertical: 18, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 10, marginTop: 4 },
-  startBtnText: { fontSize: 20, fontFamily: "Inter_700Bold", color: "#fff" },
+  startBtn: { height: 68, borderRadius: 22, marginTop: 4, overflow: "hidden" },
+  startBtnBg: { flex: 1, alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 10, borderRadius: 22 },
+  startIconWell: { width: 42, height: 42, borderRadius: 14, backgroundColor: "rgba(255,255,255,0.22)", alignItems: "center", justifyContent: "center" },
+  startIconAsset: { width: 34, height: 34 },
+  startBtnText: { fontSize: 22, fontFamily: "Inter_700Bold", color: "#FFFFFF" },
 });

@@ -6,6 +6,7 @@ import React, {
   useEffect,
   useState,
 } from "react";
+import { PROFILE_AVATAR_IDS } from "@/constants/profileAvatars";
 
 const PROFILES_INDEX_KEY = "@mathdrills_profiles_v2_index";
 
@@ -31,7 +32,7 @@ interface ProfileContextType {
 
 const ProfileContext = createContext<ProfileContextType | null>(null);
 
-export const PROFILE_AVATARS = ["🧒", "👦", "👧", "🧑", "👩", "👨", "🧑‍🚀", "👩‍🚀", "👨‍🚀", "🦸", "🦸‍♀️", "🦸‍♂️", "🧙", "🧝", "🧜", "🐱", "🐶", "🦊", "🐸", "🦄"];
+export const PROFILE_AVATARS = [...PROFILE_AVATAR_IDS];
 
 export function ProfileProvider({ children }: { children: React.ReactNode }) {
   const [profiles, setProfiles] = useState<PlayerProfile[]>([]);

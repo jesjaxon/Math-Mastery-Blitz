@@ -10,6 +10,17 @@ export interface DrillResult {
   difficulty: Difficulty;
   totalGames: number;
   durationSeconds: number;
+  questionAnalytics?: DrillQuestionAnalyticsEntry[];
+}
+
+export interface DrillQuestionAnalyticsEntry {
+  questionKey: string;
+  display: string;
+  op: Operation;
+  difficulty: Difficulty;
+  answer: number;
+  correct: boolean;
+  responseMs?: number;
 }
 
 export interface AchievementDef {

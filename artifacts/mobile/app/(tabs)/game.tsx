@@ -1,8 +1,10 @@
+import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { router } from "expo-router";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   Animated,
+  Image,
   Platform,
   StyleSheet,
   Text,
@@ -12,15 +14,21 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import NumberPad from "@/components/NumberPad";
 import TimerBar from "@/components/TimerBar";
+import { OIL_RIG_FRAMES } from "@/constants/drillAnimationAssets";
 import { useGame } from "@/context/GameContext";
 import { useColors } from "@/hooks/useColors";
+import { playGameSound } from "@/utils/gameAudio";
 import { generateQuestion, type Question } from "@/utils/mathUtils";
-import type { Operation } from "@/constants/achievements";
+import type { DrillQuestionAnalyticsEntry, Operation } from "@/constants/achievements";
+
+const roundCurrency = (value: number) => Math.round(value * 100) / 100;
+const formatEarned = (value: number) => value.toFixed(2);
+const getQuestionKey = (q: Question) => `${q.op}:${q.a}:${q.b}`;
 
 export default function GameScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { settings, setLastSession, saveSession } = useGame();
+  const { settings, setLastSession, saveSession, addDrillTickRewards, getPassiveRate } = useGame();
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const bottomPad = Platform.OS === "web" ? 34 : insets.bottom;
@@ -38,6 +46,9 @@ export default function GameScreen() {
   >({});
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [gameOver, setGameOver] = useState(false);
+  const [passivePointsEarned, setPassivePointsEarned] = useState(0);
+  const [passiveStarCoinsEarned, setPassiveStarCoinsEarned] = useState(0);
+  const [animationFrame, setAnimationFrame] = useState(0);
 
   const flashAnim = useRef(new Animated.Value(0)).current;
   const shakeAnim = useRef(new Animated.Value(0)).current;
@@ -47,19 +58,59 @@ export default function GameScreen() {
   const maxStreakRef = useRef(0);
   const correctByOpRef = useRef<Partial<Record<Operation, number>>>({});
   const elapsedSecondsRef = useRef(0);
+  const passivePointsEarnedRef = useRef(0);
+  const passiveStarCoinsEarnedRef = useRef(0);
+  const passiveRateRef = useRef(0);
+  const questionStartMsRef = useRef(Date.now());
+  const questionAnalyticsRef = useRef<DrillQuestionAnalyticsEntry[]>([]);
+  const nextQuestionTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    passiveRateRef.current = getPassiveRate();
+  }, [getPassiveRate]);
+
+  useEffect(() => {
+    return () => {
+      if (nextQuestionTimeoutRef.current) {
+        clearTimeout(nextQuestionTimeoutRef.current);
+      }
+    };
+  }, []);
 
   const nextQuestion = useCallback(() => {
     setQuestion(generateQuestion(settings.operations, settings.difficulty));
+    questionStartMsRef.current = Date.now();
     setInput("");
     setIsTransitioning(false);
   }, [settings.operations, settings.difficulty]);
 
+  useEffect(() => {
+    if (gameOver) return;
+    const animationTimer = setInterval(() => {
+      setAnimationFrame((frame) => (frame + 1) % OIL_RIG_FRAMES.length);
+    }, 190);
+    return () => clearInterval(animationTimer);
+  }, [gameOver]);
+
   const handleCorrect = useCallback(() => {
-    if (Platform.OS !== "web") {
+    if (settings.hapticsEnabled && Platform.OS !== "web") {
       Haptics.notificationAsync(
         Haptics.NotificationFeedbackType.Success
       ).catch(() => {});
     }
+    playGameSound("correct", settings.soundEnabled, settings.soundVolume);
+    questionAnalyticsRef.current = [
+      ...questionAnalyticsRef.current,
+      {
+        questionKey: getQuestionKey(question),
+        display: question.display,
+        op: question.op,
+        difficulty: settings.difficulty,
+        answer: question.answer,
+        correct: true,
+        responseMs: Date.now() - questionStartMsRef.current,
+      },
+    ];
 
     const newScore = scoreRef.current + 1;
     const newStreak = streakRef.current + 1;
@@ -97,22 +148,40 @@ export default function GameScreen() {
       Animated.timing(scaleAnim, {
         toValue: 1.12,
         duration: 80,
-        useNativeDriver: true,
+        useNativeDriver: false,
       }),
       Animated.timing(scaleAnim, {
         toValue: 1,
         duration: 150,
-        useNativeDriver: true,
+        useNativeDriver: false,
       }),
     ]).start();
 
-    setTimeout(nextQuestion, 300);
-  }, [question, flashAnim, scaleAnim, nextQuestion]);
+    if (nextQuestionTimeoutRef.current) {
+      clearTimeout(nextQuestionTimeoutRef.current);
+    }
+    nextQuestionTimeoutRef.current = setTimeout(() => {
+      nextQuestionTimeoutRef.current = null;
+      nextQuestion();
+    }, 300);
+  }, [question, flashAnim, scaleAnim, nextQuestion, settings.difficulty, settings.hapticsEnabled, settings.soundEnabled, settings.soundVolume]);
 
   const handleWrong = useCallback(() => {
-    if (Platform.OS !== "web") {
+    if (settings.hapticsEnabled && Platform.OS !== "web") {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
     }
+    playGameSound("wrong", settings.soundEnabled, settings.soundVolume);
+    questionAnalyticsRef.current = [
+      ...questionAnalyticsRef.current,
+      {
+        questionKey: getQuestionKey(question),
+        display: question.display,
+        op: question.op,
+        difficulty: settings.difficulty,
+        answer: question.answer,
+        correct: false,
+      },
+    ];
     streakRef.current = 0;
     setStreak(0);
 
@@ -120,25 +189,25 @@ export default function GameScreen() {
       Animated.timing(shakeAnim, {
         toValue: 8,
         duration: 50,
-        useNativeDriver: true,
+        useNativeDriver: false,
       }),
       Animated.timing(shakeAnim, {
         toValue: -8,
         duration: 50,
-        useNativeDriver: true,
+        useNativeDriver: false,
       }),
       Animated.timing(shakeAnim, {
         toValue: 6,
         duration: 50,
-        useNativeDriver: true,
+        useNativeDriver: false,
       }),
       Animated.timing(shakeAnim, {
         toValue: 0,
         duration: 50,
-        useNativeDriver: true,
+        useNativeDriver: false,
       }),
     ]).start();
-  }, [shakeAnim]);
+  }, [question, shakeAnim, settings.difficulty, settings.hapticsEnabled, settings.soundEnabled, settings.soundVolume]);
 
   const handleKeyPress = useCallback(
     (key: string) => {
@@ -150,7 +219,8 @@ export default function GameScreen() {
       }
 
       const newInput = input + key;
-      if (newInput.length > 3) return;
+      const maxAnswerLength = Math.max(1, String(question.answer).length);
+      if (newInput.length > maxAnswerLength) return;
 
       setInput(newInput);
 
@@ -171,6 +241,21 @@ export default function GameScreen() {
     if (timeLeft <= 0 || gameOver) return;
     const timer = setTimeout(() => {
       elapsedSecondsRef.current += 1;
+      const passiveRatePerMinute = passiveRateRef.current;
+      if (passiveRatePerMinute > 0) {
+        const tickReward = roundCurrency(passiveRatePerMinute / 60);
+        if (tickReward > 0) {
+          passivePointsEarnedRef.current = roundCurrency(
+            passivePointsEarnedRef.current + tickReward
+          );
+          passiveStarCoinsEarnedRef.current = roundCurrency(
+            passiveStarCoinsEarnedRef.current + tickReward
+          );
+          setPassivePointsEarned(passivePointsEarnedRef.current);
+          setPassiveStarCoinsEarned(passiveStarCoinsEarnedRef.current);
+          addDrillTickRewards(tickReward, tickReward);
+        }
+      }
       if (timeLeft === 1) {
         setGameOver(true);
         const result = {
@@ -182,16 +267,23 @@ export default function GameScreen() {
           difficulty: settings.difficulty,
           totalGames: 0,
           durationSeconds: elapsedSecondsRef.current,
+          questionAnalytics: questionAnalyticsRef.current,
         };
-        const { newAchievements, pointsEarned, starCoinsEarned } = saveSession(result);
-        setLastSession({ ...result, newAchievements, pointsEarned, starCoinsEarned });
+        const { newAchievements, pointsEarned, starCoinsEarned, planetGemsEarned } = saveSession(result);
+        setLastSession({
+          ...result,
+          newAchievements,
+          pointsEarned: roundCurrency(pointsEarned + passivePointsEarnedRef.current),
+          starCoinsEarned: roundCurrency(starCoinsEarned + passiveStarCoinsEarnedRef.current),
+          planetGemsEarned,
+        });
         router.replace("/results");
       } else {
         setTimeLeft((t) => t - 1);
       }
     }, 1000);
     return () => clearTimeout(timer);
-  }, [timeLeft, gameOver, settings, saveSession, setLastSession]);
+  }, [timeLeft, gameOver, settings, saveSession, setLastSession, addDrillTickRewards]);
 
   const flashBg = flashAnim.interpolate({
     inputRange: [0, 1],
@@ -246,9 +338,24 @@ export default function GameScreen() {
             </View>
           )}
         </View>
+        {passiveRateRef.current > 0 && (
+          <View style={styles.liveEarnRow}>
+            <Text style={[styles.liveEarnText, { color: colors.gold }]}>
+              +{formatEarned(passivePointsEarned)} Points
+            </Text>
+            <Text style={[styles.liveEarnText, { color: "#00B4D8" }]}>
+              +{formatEarned(passiveStarCoinsEarned)} Star Coins
+            </Text>
+          </View>
+        )}
       </View>
 
       <View style={styles.questionArea}>
+        <Image
+          source={OIL_RIG_FRAMES[animationFrame]}
+          style={styles.drillAnimation}
+          resizeMode="contain"
+        />
         <Text style={[styles.questionText, { color: colors.foreground }]}>
           {question.display}
         </Text>
@@ -257,24 +364,25 @@ export default function GameScreen() {
         </Text>
       </View>
 
-      <Animated.View
-        style={[
-          styles.inputBox,
-          {
-            backgroundColor: inputBg,
-            borderColor: inputBorderColor,
-            transform: [{ translateX: shakeAnim }],
-          },
-        ]}
-      >
-        <Text
+      <Animated.View style={[styles.inputShakeLayer, { transform: [{ translateX: shakeAnim }] }]}>
+        <Animated.View
           style={[
-            styles.inputText,
-            { color: input ? colors.foreground : colors.mutedForeground },
+            styles.inputBox,
+            {
+              backgroundColor: inputBg,
+              borderColor: inputBorderColor,
+            },
           ]}
         >
-          {input || "—"}
-        </Text>
+          <Text
+            style={[
+              styles.inputText,
+              { color: input ? colors.foreground : colors.mutedForeground },
+            ]}
+          >
+            {input || "—"}
+          </Text>
+        </Animated.View>
       </Animated.View>
 
       <View style={[styles.padArea, { paddingBottom: bottomPad + 12 }]}>
@@ -285,13 +393,20 @@ export default function GameScreen() {
       </View>
 
       <TouchableOpacity
-        style={styles.quitBtn}
+        style={[styles.quitBtn, { top: topPad + 8 }]}
         onPress={() => router.replace("/")}
         hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
       >
         <Text style={[styles.quitText, { color: colors.mutedForeground }]}>
           Quit
         </Text>
+      </TouchableOpacity>
+      <TouchableOpacity
+        style={[styles.settingsBtn, { top: topPad + 8, backgroundColor: colors.card, borderColor: colors.border }]}
+        onPress={() => router.push("/settings" as any)}
+        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+      >
+        <Feather name="settings" size={22} color={colors.foreground} />
       </TouchableOpacity>
     </Animated.View>
   );
@@ -305,6 +420,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
   },
+  liveEarnRow: { flexDirection: "row", justifyContent: "center", gap: 14, minHeight: 20 },
+  liveEarnText: { fontSize: 12, fontFamily: "Inter_700Bold" },
   timerText: { fontSize: 16, fontFamily: "Inter_500Medium", minWidth: 48 },
   scoreText: { fontSize: 48, fontFamily: "Inter_700Bold" },
   streakBadge: {
@@ -319,13 +436,14 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    gap: 4,
+    gap: 3,
   },
+  drillAnimation: { width: 106, height: 86, marginBottom: 2 },
   questionText: {
     fontSize: 52,
     fontFamily: "Inter_700Bold",
     textAlign: "center",
-    letterSpacing: -1,
+    letterSpacing: 0,
   },
   equalsText: { fontSize: 28, fontFamily: "Inter_500Medium" },
   inputBox: {
@@ -334,10 +452,10 @@ const styles = StyleSheet.create({
     paddingVertical: 18,
     paddingHorizontal: 24,
     alignItems: "center",
-    marginBottom: 16,
     minHeight: 80,
     justifyContent: "center",
   },
+  inputShakeLayer: { marginBottom: 16 },
   inputText: {
     fontSize: 44,
     fontFamily: "Inter_700Bold",
@@ -345,5 +463,15 @@ const styles = StyleSheet.create({
   },
   padArea: { paddingTop: 4 },
   quitBtn: { position: "absolute", top: 12, left: 20, padding: 4 },
+  settingsBtn: {
+    position: "absolute",
+    right: 20,
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   quitText: { fontSize: 14, fontFamily: "Inter_500Medium" },
 });

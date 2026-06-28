@@ -1,7 +1,9 @@
 import { Feather } from "@expo/vector-icons";
 import { router } from "expo-router";
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import {
+  Image,
+  ImageBackground,
   Platform,
   ScrollView,
   StyleSheet,
@@ -12,98 +14,156 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { INVENTIONS } from "@/constants/inventions";
 import { SOLAR_SYSTEM } from "@/constants/planets";
+import {
+  GEM_ASSETS,
+  INVENTION_ASSETS,
+  WORKSHOP_ASSETS,
+} from "@/constants/workshopAssets";
 import { useGame } from "@/context/GameContext";
 import { useColors } from "@/hooks/useColors";
+import { PinnedHeader, usePinnedHeaderHeight } from "@/components/PinnedHeader";
 
 type FilterTab = "all" | "t1" | "t2" | "t3" | "t4" | "crafted";
 
-const GEM_PLANETS = SOLAR_SYSTEM.filter((b) => b.gem);
+const GEM_PLANETS = SOLAR_SYSTEM.filter((body) => body.gem);
 
 const TIER_COLORS: Record<number, string> = {
-  1: "#4CAF50",
-  2: "#2196F3",
-  3: "#9C27B0",
-  4: "#FF9800",
+  1: "#00D9A3",
+  2: "#35A7FF",
+  3: "#B56CFF",
+  4: "#FFD05A",
 };
 
 const FILTER_TABS: { key: FilterTab; label: string }[] = [
   { key: "all", label: "All" },
-  { key: "t1", label: "Tier 1" },
-  { key: "t2", label: "Tier 2" },
-  { key: "t3", label: "Tier 3" },
-  { key: "t4", label: "Tier 4" },
-  { key: "crafted", label: "✓ Crafted" },
+  { key: "t1", label: "T1" },
+  { key: "t2", label: "T2" },
+  { key: "t3", label: "T3" },
+  { key: "t4", label: "T4" },
+  { key: "crafted", label: "Crafted" },
 ];
 
 function effectLabel(effect: { starCoinsPerHour?: number; multiplier?: number; coinsPerAnswer?: number }): string {
   const parts: string[] = [];
-  if (effect.starCoinsPerHour) parts.push(`+${effect.starCoinsPerHour} 🪙/hr`);
-  if (effect.multiplier) parts.push(`×${effect.multiplier.toFixed(2)} pts`);
-  if (effect.coinsPerAnswer) parts.push(`+${effect.coinsPerAnswer} 🪙/answer`);
-  return parts.join("  ·  ");
+  if (effect.starCoinsPerHour) parts.push(`+${effect.starCoinsPerHour} Star Coins/min`);
+  if (effect.multiplier) parts.push(`x${effect.multiplier.toFixed(2)} Points`);
+  if (effect.coinsPerAnswer) parts.push(`+${effect.coinsPerAnswer} Star Coins/answer`);
+  return parts.join("  |  ");
 }
 
 export default function WorkshopScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { gameData, craftInvention, getLevel } = useGame();
+  const { gameData, craftInvention, getLevel, getPassiveRate, getDrillMultiplier, getDrillCoinBonus } =
+    useGame();
   const [filter, setFilter] = useState<FilterTab>("all");
   const [justCrafted, setJustCrafted] = useState<string | null>(null);
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const bottomPad = Platform.OS === "web" ? 34 : insets.bottom;
+  const headerHeight = usePinnedHeaderHeight();
   const playerLevel = getLevel(gameData.points);
-
   const craftedInventions = gameData.craftedInventions ?? [];
 
-  const filteredInventions = INVENTIONS.filter((inv) => {
-    if (filter === "crafted") return craftedInventions.includes(inv.id);
-    if (filter === "t1") return inv.tier === 1;
-    if (filter === "t2") return inv.tier === 2;
-    if (filter === "t3") return inv.tier === 3;
-    if (filter === "t4") return inv.tier === 4;
-    return true;
-  });
+  const filteredInventions = useMemo(
+    () =>
+      INVENTIONS.filter((inv) => {
+        if (filter === "crafted") return craftedInventions.includes(inv.id);
+        if (filter === "t1") return inv.tier === 1;
+        if (filter === "t2") return inv.tier === 2;
+        if (filter === "t3") return inv.tier === 3;
+        if (filter === "t4") return inv.tier === 4;
+        return true;
+      }),
+    [craftedInventions, filter]
+  );
+
+  const totalStones = GEM_PLANETS.reduce(
+    (sum, planet) => sum + (gameData.planetGems[planet.id] ?? 0),
+    0
+  );
 
   const handleCraft = (id: string) => {
     const success = craftInvention(id);
-    if (success) {
-      setJustCrafted(id);
-      setTimeout(() => setJustCrafted(null), 1500);
-    }
+    if (!success) return;
+    setJustCrafted(id);
+    setTimeout(() => setJustCrafted(null), 1200);
   };
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
-      <ScrollView
-        contentContainerStyle={[
-          styles.scroll,
-          { paddingTop: topPad + 12, paddingBottom: bottomPad + 24 },
-        ]}
-        showsVerticalScrollIndicator={false}
-      >
-        {/* Header */}
-        <View style={styles.header}>
-          <TouchableOpacity
-            style={[styles.backBtn, { backgroundColor: colors.card }]}
-            onPress={() => router.back()}
-          >
-            <Feather name="arrow-left" size={20} color={colors.foreground} />
-          </TouchableOpacity>
-          <View>
-            <Text style={[styles.title, { color: colors.foreground }]}>Workshop</Text>
-            <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>
-              {craftedInventions.length}/{INVENTIONS.length} crafted
-            </Text>
+      <PinnedHeader title="Workshop" subtitle="Craft drill boosts from space stones" />
+      <View style={[styles.pinnedBankroll, { top: headerHeight, backgroundColor: colors.background, borderColor: colors.border }]}>
+        <View style={[styles.stoneBankroll, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <Feather name="tool" size={18} color="#B56CFF" />
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.bankrollLabel, { color: colors.mutedForeground }]}>Space Stones available</Text>
+            <Text style={[styles.bankrollValue, { color: "#D8C6FF" }]}>{totalStones.toLocaleString()} stones</Text>
           </View>
-          <View style={[styles.levelBadge, { backgroundColor: colors.primary + "22" }]}>
+          <View style={[styles.levelBadge, { backgroundColor: "#17153A", borderColor: colors.border }]}>
             <Text style={[styles.levelBadgeText, { color: colors.primary }]}>Lv {playerLevel}</Text>
           </View>
         </View>
+      </View>
+      <ScrollView
+        bounces={false}
+        alwaysBounceVertical={false}
+        contentContainerStyle={[
+          styles.scroll,
+          { paddingTop: headerHeight + 78, paddingBottom: bottomPad + 24 },
+        ]}
+        showsVerticalScrollIndicator={false}
+      >
+        <ImageBackground
+          source={WORKSHOP_ASSETS.background}
+          resizeMode="cover"
+          imageStyle={styles.heroImage}
+          style={[styles.hero, { borderColor: colors.border }]}
+        >
+          <View style={styles.heroShade} />
+          <View style={styles.heroStats}>
+            <View style={styles.heroStat}>
+              <Text style={styles.heroStatValue}>{craftedInventions.length}/{INVENTIONS.length}</Text>
+              <Text style={styles.heroStatLabel}>crafted</Text>
+            </View>
+            <View style={styles.heroStat}>
+              <Text style={styles.heroStatValue}>{totalStones}</Text>
+              <Text style={styles.heroStatLabel}>stones</Text>
+            </View>
+            <View style={styles.heroStat}>
+              <Text style={styles.heroStatValue}>{getPassiveRate().toFixed(1)}</Text>
+              <Text style={styles.heroStatLabel}>Star Coins/min</Text>
+            </View>
+          </View>
+        </ImageBackground>
 
-        {/* Stone Inventory */}
+        <View style={[styles.boostPanel, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <View style={styles.boostItem}>
+            <Feather name="trending-up" size={18} color="#FFD05A" />
+            <Text style={[styles.boostText, { color: colors.foreground }]}>
+              x{getDrillMultiplier().toFixed(2)} Points
+            </Text>
+          </View>
+          <View style={styles.boostItem}>
+            <Feather name="star" size={18} color="#00B4D8" />
+            <Text style={[styles.boostText, { color: colors.foreground }]}>
+              +{getDrillCoinBonus()} Star Coins/answer
+            </Text>
+          </View>
+        </View>
+
         <View style={[styles.stonePanel, { backgroundColor: colors.card, borderColor: colors.border }]}>
-          <Text style={[styles.stonePanelTitle, { color: colors.mutedForeground }]}>YOUR STONES</Text>
+          <View style={styles.sectionHead}>
+            <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Space Stones</Text>
+            <TouchableOpacity
+              style={[styles.smallRouteBtn, { backgroundColor: "#00B4D822" }]}
+              onPress={() => router.push("/launch")}
+              activeOpacity={0.85}
+            >
+              <Feather name="send" size={14} color="#00B4D8" />
+              <Text style={styles.smallRouteText}>Launch</Text>
+            </TouchableOpacity>
+          </View>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.stoneRow}>
             {GEM_PLANETS.map((planet) => {
               const count = gameData.planetGems[planet.id] ?? 0;
@@ -113,15 +173,16 @@ export default function WorkshopScreen() {
                   style={[
                     styles.stoneChip,
                     {
-                      backgroundColor: count > 0 ? colors.background : colors.secondary,
-                      borderColor: count > 0 ? colors.primary + "55" : colors.border,
-                      opacity: count > 0 ? 1 : 0.4,
+                      backgroundColor: count > 0 ? "#0F1835" : "#151429",
+                      borderColor: count > 0 ? planet.color + "AA" : colors.border,
+                      opacity: count > 0 ? 1 : 0.5,
                     },
                   ]}
                 >
-                  <Text style={styles.stoneEmoji}>{planet.gem}</Text>
-                  <Text style={[styles.stoneCount, { color: count > 0 ? colors.foreground : colors.mutedForeground }]}>
-                    ×{count}
+                  <Image source={GEM_ASSETS[planet.id]} style={styles.stoneIcon} resizeMode="contain" />
+                  <Text style={[styles.stoneCount, { color: colors.foreground }]}>x{count}</Text>
+                  <Text style={[styles.stoneName, { color: colors.mutedForeground }]} numberOfLines={1}>
+                    {planet.name}
                   </Text>
                 </View>
               );
@@ -129,12 +190,7 @@ export default function WorkshopScreen() {
           </ScrollView>
         </View>
 
-        {/* Filter Tabs */}
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.tabRow}
-        >
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabRow}>
           {FILTER_TABS.map((tab) => (
             <TouchableOpacity
               key={tab.key}
@@ -146,6 +202,7 @@ export default function WorkshopScreen() {
                 },
               ]}
               onPress={() => setFilter(tab.key)}
+              activeOpacity={0.85}
             >
               <Text style={[styles.tabText, { color: filter === tab.key ? "#fff" : colors.mutedForeground }]}>
                 {tab.label}
@@ -154,12 +211,11 @@ export default function WorkshopScreen() {
           ))}
         </ScrollView>
 
-        {/* Invention Cards */}
         <View style={styles.cardList}>
           {filteredInventions.length === 0 && (
             <View style={[styles.emptyState, { borderColor: colors.border }]}>
               <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>
-                {filter === "crafted" ? "No inventions crafted yet." : "No inventions here."}
+                No crafted inventions yet.
               </Text>
             </View>
           )}
@@ -168,7 +224,6 @@ export default function WorkshopScreen() {
             const isCrafted = craftedInventions.includes(inv.id);
             const isLocked = playerLevel < inv.levelRequired;
             const tierColor = TIER_COLORS[inv.tier];
-
             const canCraft =
               !isLocked &&
               !isCrafted &&
@@ -183,82 +238,82 @@ export default function WorkshopScreen() {
                   styles.card,
                   {
                     backgroundColor: colors.card,
-                    borderColor: isCrafted ? tierColor + "99" : colors.border,
-                    borderWidth: isCrafted ? 1.5 : 1,
-                    opacity: isLocked ? 0.65 : 1,
+                    borderColor: isCrafted ? tierColor : colors.border,
                   },
                 ]}
               >
-                {/* Card top: emoji + name/desc */}
                 <View style={styles.cardTop}>
-                  <Text style={styles.cardEmoji}>{inv.emoji}</Text>
-                  <View style={{ flex: 1 }}>
+                  <View style={[styles.iconWell, { backgroundColor: tierColor + "18" }]}>
+                    <Image source={INVENTION_ASSETS[inv.id]} style={styles.cardAsset} resizeMode="contain" />
+                  </View>
+                  <View style={styles.cardCopy}>
                     <View style={styles.cardNameRow}>
-                      <Text style={[styles.cardName, { color: colors.foreground }]}>{inv.name}</Text>
+                      <Text style={[styles.cardName, { color: colors.foreground }]} numberOfLines={1}>
+                        {inv.name}
+                      </Text>
                       <View style={[styles.tierBadge, { backgroundColor: tierColor + "22" }]}>
                         <Text style={[styles.tierText, { color: tierColor }]}>T{inv.tier}</Text>
                       </View>
                     </View>
-                    <Text style={[styles.cardDesc, { color: colors.mutedForeground }]}>
+                    <Text style={[styles.cardDesc, { color: colors.mutedForeground }]} numberOfLines={2}>
                       {inv.description}
                     </Text>
                   </View>
                 </View>
 
-                {/* Recipe */}
                 <View style={styles.recipeRow}>
-                  <Text style={[styles.recipeLabel, { color: colors.mutedForeground }]}>Recipe:</Text>
                   {Object.entries(inv.recipe).map(([planetId, needed]) => {
                     const planet = SOLAR_SYSTEM.find((p) => p.id === planetId);
                     const have = gameData.planetGems[planetId] ?? 0;
-                    const sufficient = have >= needed;
+                    const enough = have >= needed;
                     return (
                       <View
                         key={planetId}
                         style={[
                           styles.ingredientChip,
                           {
-                            backgroundColor: sufficient ? "#00C17322" : "#FF475722",
-                            borderColor: sufficient ? "#00C173" : "#FF4757",
+                            backgroundColor: enough ? "#00D9A322" : "#FF475722",
+                            borderColor: enough ? "#00D9A3" : "#FF6B6B",
                           },
                         ]}
                       >
-                        <Text style={styles.ingredientEmoji}>{planet?.gem ?? "🪨"}</Text>
-                        <Text style={[styles.ingredientText, { color: sufficient ? "#00C173" : "#FF4757" }]}>
-                          ×{needed}
+                        <Image source={GEM_ASSETS[planetId]} style={styles.ingredientIcon} resizeMode="contain" />
+                        <Text style={[styles.ingredientText, { color: enough ? "#00D9A3" : "#FF6B6B" }]}>
+                          {have}/{needed}
+                        </Text>
+                        <Text style={[styles.ingredientName, { color: colors.mutedForeground }]} numberOfLines={1}>
+                          {planet?.name}
                         </Text>
                       </View>
                     );
                   })}
                 </View>
 
-                {/* Effect */}
-                <View style={[styles.effectRow, { backgroundColor: "#00B4D811" }]}>
-                  <Text style={[styles.effectText, { color: "#00B4D8" }]}>
-                    ✦ {effectLabel(inv.effect)}
-                  </Text>
+                <View style={[styles.effectRow, { backgroundColor: "#00B4D814" }]}>
+                  <Feather name="zap" size={15} color="#00B4D8" />
+                  <Text style={[styles.effectText, { color: "#64DFFF" }]}>{effectLabel(inv.effect)}</Text>
                 </View>
 
-                {/* Action button */}
                 {isCrafted ? (
                   <View style={[styles.craftBtn, { backgroundColor: tierColor + "22" }]}>
-                    <Text style={[styles.craftBtnText, { color: tierColor }]}>✓ Crafted</Text>
+                    <Feather name="check" size={16} color={tierColor} />
+                    <Text style={[styles.craftBtnText, { color: tierColor }]}>Crafted</Text>
                   </View>
                 ) : isLocked ? (
                   <View style={[styles.craftBtn, { backgroundColor: "#FF475722" }]}>
-                    <Text style={[styles.craftBtnText, { color: "#FF4757" }]}>
-                      🔒 Level {inv.levelRequired} required
-                    </Text>
+                    <Feather name="lock" size={15} color="#FF6B6B" />
+                    <Text style={[styles.craftBtnText, { color: "#FF6B6B" }]}>Level {inv.levelRequired}</Text>
                   </View>
                 ) : (
                   <TouchableOpacity
-                    style={[styles.craftBtn, { backgroundColor: canCraft ? colors.primary : colors.muted }]}
+                    style={[styles.craftBtn, { backgroundColor: canCraft ? colors.primary : "#2A2845" }]}
                     onPress={() => handleCraft(inv.id)}
                     disabled={!canCraft}
-                    activeOpacity={0.8}
+                    activeOpacity={0.85}
                   >
+                    <Feather name="tool" size={15} color={canCraft ? "#fff" : colors.mutedForeground} />
                     <Text style={[styles.craftBtnText, { color: canCraft ? "#fff" : colors.mutedForeground }]}>
-                      {justCrafted === inv.id ? "✓ Done!" : canCraft ? "Craft" : "Not enough stones"}
+                      {justCrafted === inv.id ? "Done" : canCraft ? "Craft" : "Need stones"}
                     </Text>
                   </TouchableOpacity>
                 )}
@@ -277,83 +332,181 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
+    gap: 12,
+    zIndex: 10,
   },
-  backBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
+  iconBtn: {
+    width: 52,
+    height: 52,
+    borderRadius: 16,
     alignItems: "center",
     justifyContent: "center",
   },
-  title: { fontSize: 22, fontFamily: "Inter_700Bold" },
-  subtitle: { fontSize: 12, fontFamily: "Inter_400Regular" },
-  levelBadge: { borderRadius: 10, paddingHorizontal: 10, paddingVertical: 5 },
-  levelBadgeText: { fontSize: 13, fontFamily: "Inter_700Bold" },
-  stonePanel: { borderRadius: 16, borderWidth: 1, padding: 14, gap: 10 },
-  stonePanelTitle: {
-    fontSize: 10,
-    fontFamily: "Inter_600SemiBold",
-    letterSpacing: 1.2,
-    textTransform: "uppercase",
-  },
-  stoneRow: { flexDirection: "row", gap: 8 },
-  stoneChip: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 12,
-    borderWidth: 1.5,
-  },
-  stoneEmoji: { fontSize: 16 },
-  stoneCount: { fontSize: 13, fontFamily: "Inter_700Bold" },
-  tabRow: { flexDirection: "row", gap: 8, paddingVertical: 2 },
-  tab: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, borderWidth: 1 },
-  tabText: { fontSize: 13, fontFamily: "Inter_600SemiBold" },
-  cardList: { gap: 12 },
-  emptyState: {
-    borderRadius: 14,
+  headerCopy: { flex: 1, alignItems: "center" },
+  title: { fontSize: 31, fontFamily: "Inter_700Bold" },
+  subtitle: { fontSize: 14, fontFamily: "Inter_500Medium", marginTop: 2, textAlign: "center" },
+  pinnedBankroll: { position: "absolute", left: 0, right: 0, zIndex: 90, paddingHorizontal: 16, paddingTop: 4, paddingBottom: 10, borderBottomWidth: 1 },
+  stoneBankroll: { minHeight: 58, borderRadius: 18, borderWidth: 1, paddingHorizontal: 14, flexDirection: "row", alignItems: "center", gap: 10 },
+  bankrollLabel: { fontSize: 10, fontFamily: "Inter_700Bold", textTransform: "uppercase", letterSpacing: 0 },
+  bankrollValue: { fontSize: 17, fontFamily: "Inter_700Bold" },
+  levelBadge: {
+    minWidth: 52,
+    height: 52,
+    borderRadius: 16,
     borderWidth: 1,
-    borderStyle: "dashed",
-    padding: 32,
     alignItems: "center",
+    justifyContent: "center",
   },
-  emptyText: { fontSize: 14, fontFamily: "Inter_400Regular" },
-  card: { borderRadius: 16, padding: 14, gap: 10 },
-  cardTop: { flexDirection: "row", alignItems: "flex-start", gap: 12 },
-  cardEmoji: { fontSize: 34, marginTop: 2 },
-  cardNameRow: {
+  levelBadgeText: { fontSize: 15, fontFamily: "Inter_700Bold" },
+  hero: {
+    height: 188,
+    borderRadius: 28,
+    borderWidth: 1.5,
+    overflow: "hidden",
+    justifyContent: "flex-end",
+  },
+  heroImage: { borderRadius: 28 },
+  heroShade: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(4, 6, 20, 0.22)",
+  },
+  heroStats: {
     flexDirection: "row",
-    alignItems: "center",
     gap: 8,
-    flexWrap: "wrap",
+    padding: 12,
   },
-  cardName: { fontSize: 15, fontFamily: "Inter_700Bold" },
-  tierBadge: { borderRadius: 6, paddingHorizontal: 7, paddingVertical: 2 },
-  tierText: { fontSize: 10, fontFamily: "Inter_700Bold", textTransform: "uppercase" },
-  cardDesc: { fontSize: 12, fontFamily: "Inter_400Regular", marginTop: 2, lineHeight: 17 },
-  recipeRow: {
+  heroStat: {
+    flex: 1,
+    minHeight: 58,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(7, 10, 30, 0.76)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.12)",
+  },
+  heroStatValue: { color: "#fff", fontSize: 18, fontFamily: "Inter_700Bold" },
+  heroStatLabel: {
+    color: "rgba(255,255,255,0.68)",
+    fontSize: 10,
+    fontFamily: "Inter_700Bold",
+    textTransform: "uppercase",
+    marginTop: 2,
+  },
+  boostPanel: {
+    flexDirection: "row",
+    borderRadius: 18,
+    borderWidth: 1,
+    padding: 10,
+    gap: 10,
+  },
+  boostItem: {
+    flex: 1,
+    minHeight: 42,
+    borderRadius: 12,
+    backgroundColor: "#0E1831",
+    alignItems: "center",
+    justifyContent: "center",
+    flexDirection: "row",
+    gap: 7,
+  },
+  boostText: { fontSize: 13, fontFamily: "Inter_700Bold" },
+  stonePanel: { borderRadius: 22, borderWidth: 1, padding: 12, gap: 10 },
+  sectionHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  sectionTitle: { fontSize: 18, fontFamily: "Inter_700Bold" },
+  smallRouteBtn: {
+    height: 34,
+    paddingHorizontal: 12,
+    borderRadius: 12,
     flexDirection: "row",
     alignItems: "center",
-    flexWrap: "wrap",
     gap: 6,
   },
-  recipeLabel: { fontSize: 11, fontFamily: "Inter_500Medium" },
+  smallRouteText: { color: "#00B4D8", fontSize: 12, fontFamily: "Inter_700Bold" },
+  stoneRow: { gap: 10 },
+  stoneChip: {
+    width: 88,
+    height: 92,
+    borderRadius: 17,
+    borderWidth: 1.5,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 6,
+  },
+  stoneIcon: { width: 38, height: 38, marginBottom: 4 },
+  stoneCount: { fontSize: 15, fontFamily: "Inter_700Bold" },
+  stoneName: { fontSize: 10, fontFamily: "Inter_600SemiBold", marginTop: 2, maxWidth: 74 },
+  tabRow: { flexDirection: "row", gap: 8, paddingVertical: 2 },
+  tab: {
+    minWidth: 66,
+    height: 42,
+    borderRadius: 14,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 12,
+  },
+  tabText: { fontSize: 14, fontFamily: "Inter_700Bold" },
+  cardList: { gap: 12 },
+  emptyState: {
+    borderRadius: 18,
+    borderWidth: 1,
+    borderStyle: "dashed",
+    padding: 28,
+    alignItems: "center",
+  },
+  emptyText: { fontSize: 14, fontFamily: "Inter_600SemiBold" },
+  card: {
+    borderRadius: 22,
+    borderWidth: 1.5,
+    padding: 12,
+    gap: 10,
+  },
+  cardTop: { flexDirection: "row", gap: 12, alignItems: "center" },
+  iconWell: {
+    width: 74,
+    height: 74,
+    borderRadius: 18,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  cardAsset: { width: 64, height: 64 },
+  cardCopy: { flex: 1, minWidth: 0 },
+  cardNameRow: { flexDirection: "row", alignItems: "center", gap: 7 },
+  cardName: { flex: 1, fontSize: 17, fontFamily: "Inter_700Bold" },
+  tierBadge: { borderRadius: 8, paddingHorizontal: 8, paddingVertical: 3 },
+  tierText: { fontSize: 11, fontFamily: "Inter_700Bold" },
+  cardDesc: { fontSize: 12, fontFamily: "Inter_500Medium", lineHeight: 17, marginTop: 4 },
+  recipeRow: { flexDirection: "row", flexWrap: "wrap", gap: 7 },
   ingredientChip: {
+    minWidth: 96,
+    height: 36,
+    borderRadius: 12,
+    borderWidth: 1,
     flexDirection: "row",
     alignItems: "center",
-    gap: 3,
+    gap: 5,
     paddingHorizontal: 7,
-    paddingVertical: 4,
-    borderRadius: 8,
-    borderWidth: 1,
   },
-  ingredientEmoji: { fontSize: 14 },
+  ingredientIcon: { width: 22, height: 22 },
   ingredientText: { fontSize: 12, fontFamily: "Inter_700Bold" },
-  effectRow: { borderRadius: 8, paddingHorizontal: 10, paddingVertical: 7 },
-  effectText: { fontSize: 13, fontFamily: "Inter_600SemiBold" },
-  craftBtn: { borderRadius: 10, paddingVertical: 10, alignItems: "center" },
-  craftBtnText: { fontSize: 14, fontFamily: "Inter_700Bold" },
+  ingredientName: { flex: 1, fontSize: 10, fontFamily: "Inter_600SemiBold" },
+  effectRow: {
+    minHeight: 38,
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 7,
+  },
+  effectText: { flex: 1, fontSize: 13, fontFamily: "Inter_700Bold" },
+  craftBtn: {
+    height: 44,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    flexDirection: "row",
+    gap: 7,
+  },
+  craftBtnText: { fontSize: 15, fontFamily: "Inter_700Bold" },
 });

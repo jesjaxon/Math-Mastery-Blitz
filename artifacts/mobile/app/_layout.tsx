@@ -14,6 +14,7 @@ import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { GameAudioController } from "@/components/GameAudioController";
 import { GameProvider } from "@/context/GameContext";
 import { ProfileProvider, useProfiles } from "@/context/ProfileContext";
 
@@ -63,6 +64,7 @@ export default function RootLayout() {
             <KeyboardProvider>
               <ProfileProvider>
                 <ProfiledGameProvider>
+                  <GameAudioController />
                   <RootLayoutNav />
                 </ProfiledGameProvider>
               </ProfileProvider>

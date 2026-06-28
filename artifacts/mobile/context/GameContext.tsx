@@ -10,13 +10,91 @@ import React, {
 import {
   ACHIEVEMENTS,
   type Difficulty,
+  type DrillQuestionAnalyticsEntry,
   type DrillResult,
   type Operation,
 } from "@/constants/achievements";
 
 const DEFAULT_STORAGE_KEY = "@mathdrills_v4";
 
-const LEVEL_THRESHOLDS = [0, 40, 100, 200, 350, 550, 800, 1100, 1500, 2000, 2700, 3600, 4700, 6000, 7500, 9500, 12000, 15000, 19000, 24000];
+export const LEVEL_THRESHOLDS = [
+  0, 40, 100, 200, 350, 550, 800, 1100, 1500, 2000, 2700, 3600, 4700, 6000,
+  7500, 9500, 12000, 15000, 19000, 24000,
+];
+
+export const LEVEL_TITLES = [
+  "Math Spark",
+  "Number Scout",
+  "Math Novice",
+  "Fact Finder",
+  "Equation Explorer",
+  "Puzzle Pilot",
+  "Times Table Ranger",
+  "Fraction Flyer",
+  "Problem Solver",
+  "Math Mechanic",
+  "Equation Engineer",
+  "Calculation Captain",
+  "Algebra Adventurer",
+  "Logic Commander",
+  "Rocket Reasoner",
+  "Cosmic Calculator",
+  "Number Navigator",
+  "Math Champion",
+  "Math Master",
+  "Grand Math Master",
+];
+
+export const MAX_ITEM_LEVEL = 4;
+const POINTS_PER_CORRECT: Record<Difficulty, number> = {
+  easy: 1,
+  medium: 2,
+  hard: 5,
+};
+const roundCurrency = (value: number) => Math.round(value * 100) / 100;
+export const getStoredItemLevel = (levels: Record<string, number> | undefined, itemId: string) =>
+  Math.min(MAX_ITEM_LEVEL, Math.max(1, levels?.[itemId] ?? 1));
+export const getItemUpgradeCost = (basePrice: number, currentLevel: number) =>
+  Math.ceil(basePrice * currentLevel);
+export type AnimalCollectionType = "aquarium" | "zoo";
+export const getAnimalLevelKey = (type: AnimalCollectionType, id: string) => `${type}:${id}`;
+
+export interface ClassroomItemLayout {
+  x: number;
+  y: number;
+  scale: number;
+  rotation: number;
+  inTray?: boolean;
+  gravityAmount?: number;
+  gravityAngle?: number;
+  showBorders?: boolean;
+  customBorders?: Array<{ id: string; x: number; y: number; w: number; h: number; rotation: number }>;
+}
+
+export interface LaunchRocketSave {
+  id: number;
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  trail: Array<{ x: number; y: number }>;
+  visited: string[];
+  inZone: string[];
+  minedIds: string[];
+  status: "flying" | "win" | "crash" | "lost";
+  flightTraj: Array<{ x: number; y: number }>;
+  tickCount: number;
+}
+
+export interface LaunchGameState {
+  phase: "select" | "aim" | "flying";
+  cam: { x: number; y: number; zoom: number };
+  selectedId: string | null;
+  activeIdx: number;
+  nextRocketId: number;
+  rockets: LaunchRocketSave[];
+  updatedAt: number;
+}
 
 export function getLevel(points: number): number {
   let level = 1;
@@ -27,10 +105,66 @@ export function getLevel(points: number): number {
   return level;
 }
 
+export interface LevelInfo {
+  level: number;
+  title: string;
+  currentXp: number;
+  levelStartXp: number;
+  nextLevelXp: number | null;
+  xpIntoLevel: number;
+  xpNeededForLevel: number | null;
+  xpToNext: number;
+  progress: number;
+  isMaxLevel: boolean;
+}
+
+export function getLevelInfo(points: number): LevelInfo {
+  const currentXp = Math.max(0, Math.floor(points));
+  const level = getLevel(currentXp);
+  const levelIndex = level - 1;
+  const levelStartXp = LEVEL_THRESHOLDS[levelIndex] ?? LEVEL_THRESHOLDS[LEVEL_THRESHOLDS.length - 1];
+  const nextLevelXp = LEVEL_THRESHOLDS[levelIndex + 1] ?? null;
+  const title = LEVEL_TITLES[levelIndex] ?? LEVEL_TITLES[LEVEL_TITLES.length - 1];
+  const xpNeededForLevel = nextLevelXp === null ? null : nextLevelXp - levelStartXp;
+  const xpIntoLevel = Math.max(0, currentXp - levelStartXp);
+  const xpToNext = nextLevelXp === null ? 0 : Math.max(0, nextLevelXp - currentXp);
+  const progress =
+    nextLevelXp === null || !xpNeededForLevel
+      ? 1
+      : Math.min(1, Math.max(0, xpIntoLevel / xpNeededForLevel));
+  return {
+    level,
+    title,
+    currentXp,
+    levelStartXp,
+    nextLevelXp,
+    xpIntoLevel,
+    xpNeededForLevel,
+    xpToNext,
+    progress,
+    isMaxLevel: nextLevelXp === null,
+  };
+}
+
 interface PerOpStats {
   totalCorrect: number;
   bestDrillScore: number;
   totalGames: number;
+}
+
+export interface QuestionAnalyticsStats {
+  questionKey: string;
+  display: string;
+  op: Operation;
+  difficulty: Difficulty;
+  answer: number;
+  attempts: number;
+  correct: number;
+  wrong: number;
+  totalResponseMs: number;
+  slowestResponseMs: number;
+  lastResponseMs: number;
+  lastSeen: number;
 }
 
 export interface GameData {
@@ -40,6 +174,8 @@ export interface GameData {
   points: number;
   ownedItems: string[];
   equippedItems: Record<string, string>;
+  classroomLayout: Record<string, ClassroomItemLayout>;
+  itemLevels: Record<string, number>;
   starCoins: number;
   lastPassiveCheck: number;
   aquariumAnimals: string[];
@@ -48,10 +184,12 @@ export interface GameData {
   displayedZooAnimals: string[];
   rocketPartsOwned: string[];
   launchComplete: boolean;
+  launchGameState: LaunchGameState | null;
   planetGems: Record<string, number>;
   craftedInventions: string[];
   totalGames: number;
   allTimeBest: number;
+  questionAnalytics: Record<string, QuestionAnalyticsStats>;
 }
 
 export interface GameSettings {
@@ -59,12 +197,21 @@ export interface GameSettings {
   timeLimit: number;
   difficulty: Difficulty;
   devUnlimitedMoney: boolean;
+  soundEnabled: boolean;
+  soundVolume: number;
+  musicEnabled: boolean;
+  musicVolume: number;
+  mainMusicTracks: string[];
+  spaceMusicTracks: string[];
+  soundtrackVersion: number;
+  hapticsEnabled: boolean;
 }
 
 export interface SaveSessionResult {
   newAchievements: string[];
   pointsEarned: number;
   starCoinsEarned: number;
+  planetGemsEarned: Record<string, number>;
 }
 
 const DEFAULT_SETTINGS: GameSettings = {
@@ -72,6 +219,14 @@ const DEFAULT_SETTINGS: GameSettings = {
   timeLimit: 60,
   difficulty: "medium",
   devUnlimitedMoney: false,
+  soundEnabled: true,
+  soundVolume: 0.8,
+  musicEnabled: true,
+  musicVolume: 0.75,
+  mainMusicTracks: ["main-1", "main-2", "main-3"],
+  spaceMusicTracks: ["space-1", "space-2", "space-3", "space-4", "space-5"],
+  soundtrackVersion: 3,
+  hapticsEnabled: true,
 };
 
 const DEFAULT_DATA: GameData = {
@@ -81,6 +236,8 @@ const DEFAULT_DATA: GameData = {
   points: 0,
   ownedItems: [],
   equippedItems: {},
+  classroomLayout: {},
+  itemLevels: {},
   starCoins: 0,
   lastPassiveCheck: Date.now(),
   aquariumAnimals: [],
@@ -89,11 +246,36 @@ const DEFAULT_DATA: GameData = {
   displayedZooAnimals: [],
   rocketPartsOwned: [],
   launchComplete: false,
+  launchGameState: null,
   planetGems: {},
   craftedInventions: [],
   totalGames: 0,
   allTimeBest: 0,
+  questionAnalytics: {},
 };
+
+function mergeTrackDefaults(saved: string[] | undefined, defaults: string[]) {
+  const merged = [...(saved ?? [])];
+  for (const id of defaults) {
+    if (!merged.includes(id)) merged.push(id);
+  }
+  return merged;
+}
+
+function normalizeSettings(settings: Partial<GameSettings> | undefined): GameSettings {
+  const merged = { ...DEFAULT_SETTINGS, ...settings };
+  const shouldUpgradeTrackLists = (settings?.soundtrackVersion ?? 1) < DEFAULT_SETTINGS.soundtrackVersion;
+  return {
+    ...merged,
+    mainMusicTracks: shouldUpgradeTrackLists
+      ? mergeTrackDefaults(settings?.mainMusicTracks, DEFAULT_SETTINGS.mainMusicTracks)
+      : merged.mainMusicTracks,
+    spaceMusicTracks: shouldUpgradeTrackLists
+      ? mergeTrackDefaults(settings?.spaceMusicTracks, DEFAULT_SETTINGS.spaceMusicTracks)
+      : merged.spaceMusicTracks,
+    soundtrackVersion: DEFAULT_SETTINGS.soundtrackVersion,
+  };
+}
 
 function getPassiveRate(data: GameData): number {
   const { SHOP_ITEMS } =
@@ -106,17 +288,30 @@ function getPassiveRate(data: GameData): number {
     require("@/constants/inventions") as typeof import("@/constants/inventions");
 
   let rate = 0;
-  for (const itemId of Object.values(data.equippedItems)) {
+  const passiveClassroomItemIds = [
+    ...data.ownedItems,
+    ...Object.values(data.equippedItems),
+  ];
+  const countedItemIds = new Set<string>();
+  for (const itemId of passiveClassroomItemIds) {
+    if (countedItemIds.has(itemId)) continue;
+    countedItemIds.add(itemId);
     const item = SHOP_ITEMS.find((i) => i.id === itemId);
-    if (item?.starCoinsPerHour) rate += item.starCoinsPerHour;
+    if (item?.starCoinsPerHour) {
+      rate += item.starCoinsPerHour * getStoredItemLevel(data.itemLevels, itemId);
+    }
   }
-  for (const id of data.displayedAquariumAnimals) {
+  for (const id of data.aquariumAnimals) {
     const a = AQUARIUM_ANIMALS.find((x) => x.id === id);
-    if (a?.starCoinsPerHour) rate += a.starCoinsPerHour;
+    if (a?.starCoinsPerHour) {
+      rate += a.starCoinsPerHour * getStoredItemLevel(data.itemLevels, getAnimalLevelKey("aquarium", id));
+    }
   }
-  for (const id of data.displayedZooAnimals) {
+  for (const id of data.zooAnimals) {
     const a = ZOO_ANIMALS.find((x) => x.id === id);
-    if (a?.starCoinsPerHour) rate += a.starCoinsPerHour;
+    if (a?.starCoinsPerHour) {
+      rate += a.starCoinsPerHour * getStoredItemLevel(data.itemLevels, getAnimalLevelKey("zoo", id));
+    }
   }
   for (const id of (data.craftedInventions ?? [])) {
     const inv = INVENTIONS.find((i) => i.id === id);
@@ -154,19 +349,82 @@ function createDefaultGameData(): GameData {
   };
 }
 
+function normalizeQuestionAnalyticsEntry(
+  entry: DrillQuestionAnalyticsEntry
+): QuestionAnalyticsStats {
+  const responseMs = entry.responseMs ?? 0;
+  return {
+    questionKey: entry.questionKey,
+    display: entry.display,
+    op: entry.op,
+    difficulty: entry.difficulty,
+    answer: entry.answer,
+    attempts: 1,
+    correct: entry.correct ? 1 : 0,
+    wrong: entry.correct ? 0 : 1,
+    totalResponseMs: entry.correct ? responseMs : 0,
+    slowestResponseMs: entry.correct ? responseMs : 0,
+    lastResponseMs: entry.correct ? responseMs : 0,
+    lastSeen: Date.now(),
+  };
+}
+
+function mergeQuestionAnalytics(
+  current: Record<string, QuestionAnalyticsStats> | undefined,
+  entries: DrillQuestionAnalyticsEntry[] | undefined
+) {
+  if (!entries?.length) return current ?? {};
+  const next = { ...(current ?? {}) };
+  for (const entry of entries) {
+    const existing = next[entry.questionKey];
+    if (!existing) {
+      next[entry.questionKey] = normalizeQuestionAnalyticsEntry(entry);
+      continue;
+    }
+    const responseMs = entry.responseMs ?? 0;
+    next[entry.questionKey] = {
+      ...existing,
+      display: entry.display,
+      op: entry.op,
+      difficulty: entry.difficulty,
+      answer: entry.answer,
+      attempts: existing.attempts + 1,
+      correct: existing.correct + (entry.correct ? 1 : 0),
+      wrong: existing.wrong + (entry.correct ? 0 : 1),
+      totalResponseMs: existing.totalResponseMs + (entry.correct ? responseMs : 0),
+      slowestResponseMs: entry.correct
+        ? Math.max(existing.slowestResponseMs, responseMs)
+        : existing.slowestResponseMs,
+      lastResponseMs: entry.correct ? responseMs : existing.lastResponseMs,
+      lastSeen: Date.now(),
+    };
+  }
+  return next;
+}
+
 interface GameContextType {
   gameData: GameData;
   settings: GameSettings;
   updateSettings: (partial: Partial<GameSettings>) => void;
   saveSession: (result: DrillResult) => SaveSessionResult;
-  lastSession: (DrillResult & { newAchievements: string[]; pointsEarned: number; starCoinsEarned: number }) | null;
+  addDrillTickRewards: (points: number, starCoins: number) => void;
+  lastSession: (DrillResult & {
+    newAchievements: string[];
+    pointsEarned: number;
+    starCoinsEarned: number;
+    planetGemsEarned?: Record<string, number>;
+  }) | null;
   setLastSession: (r: GameContextType["lastSession"]) => void;
   claimBonus: (achievementId: string) => number;
   purchaseItem: (itemId: string) => boolean;
+  upgradeItem: (itemId: string) => boolean;
   equipItem: (slot: string, itemId: string | null) => void;
+  updateClassroomLayout: (layout: Record<string, ClassroomItemLayout>) => void;
   buyAnimal: (id: string, type: "aquarium" | "zoo") => boolean;
+  upgradeAnimal: (id: string, type: "aquarium" | "zoo") => boolean;
   toggleDisplayAnimal: (id: string, type: "aquarium" | "zoo") => void;
   buyRocketPart: (partId: string) => boolean;
+  updateLaunchGameState: (state: LaunchGameState | null) => void;
   completeLaunch: () => void;
   addPlanetGem: (planetId: string) => void;
   spendStarCoins: (amount: number) => boolean;
@@ -176,6 +434,7 @@ interface GameContextType {
   getDrillMultiplier: () => number;
   getDrillCoinBonus: () => number;
   getLevel: (points: number) => number;
+  getLevelInfo: (points: number) => LevelInfo;
   resetGameProgress: () => void;
   resetAchievements: () => void;
   setDevUnlimitedMoney: (enabled: boolean) => void;
@@ -229,7 +488,7 @@ export function GameProvider({
             setGameData({ ...DEFAULT_DATA, ...parsed.gameData });
           }
           if (parsed.settings)
-            setSettings({ ...DEFAULT_SETTINGS, ...parsed.settings });
+            setSettings(normalizeSettings(parsed.settings));
         }
       })
       .catch(() => {})
@@ -286,24 +545,26 @@ export function GameProvider({
       const newlyUnlocked: string[] = [];
       let starCoinsEarned = 0;
       let pointsEarned = 0;
+      let planetGemsEarned: Record<string, number> = {};
 
       setGameData((prev) => {
         const multiplier = getDrillMultiplier(prev);
         const coinBonus = getDrillCoinBonus(prev);
-        pointsEarned = Math.round(result.score * multiplier);
-        const rate = getPassiveRate(prev);
-        const passiveCoins = Math.floor((result.durationSeconds / 3600) * rate);
-        starCoinsEarned = passiveCoins + coinBonus * result.score;
+        const basePoints = result.score * POINTS_PER_CORRECT[result.difficulty];
+        pointsEarned = Math.round(basePoints * multiplier);
+        starCoinsEarned = coinBonus * result.score;
 
         let next: GameData = {
           ...prev,
           totalGames: prev.totalGames + 1,
           allTimeBest: Math.max(prev.allTimeBest, result.score),
-          points: prev.points + pointsEarned,
-          starCoins: prev.starCoins + starCoinsEarned,
+          points: roundCurrency(prev.points + pointsEarned),
+          starCoins: roundCurrency(prev.starCoins + starCoinsEarned),
           opStats: { ...prev.opStats },
+          questionAnalytics: mergeQuestionAnalytics(prev.questionAnalytics, result.questionAnalytics),
           unlockedAchievements: { ...prev.unlockedAchievements },
           unclaimedBonuses: { ...prev.unclaimedBonuses },
+          planetGems: { ...prev.planetGems },
         };
 
         for (const op of result.operations) {
@@ -328,7 +589,23 @@ export function GameProvider({
         return next;
       });
 
-      return { newAchievements: newlyUnlocked, pointsEarned, starCoinsEarned };
+      return { newAchievements: newlyUnlocked, pointsEarned, starCoinsEarned, planetGemsEarned };
+    },
+    [persist]
+  );
+
+  const addDrillTickRewards = useCallback(
+    (points: number, starCoins: number) => {
+      if (points <= 0 && starCoins <= 0) return;
+      setGameData((prev) => {
+        const next: GameData = {
+          ...prev,
+          points: roundCurrency(prev.points + points),
+          starCoins: roundCurrency(prev.starCoins + starCoins),
+        };
+        persist(next, settingsRef.current);
+        return next;
+      });
     },
     [persist]
   );
@@ -368,6 +645,7 @@ export function GameProvider({
           ...prev,
           points: settingsRef.current.devUnlimitedMoney ? prev.points : prev.points - item.price,
           ownedItems: [...prev.ownedItems, itemId],
+          itemLevels: { ...prev.itemLevels, [itemId]: getStoredItemLevel(prev.itemLevels, itemId) },
         };
         const extIds = checkExternalAchievements(next);
         next = applyExternalAchievements(next, extIds);
@@ -379,6 +657,32 @@ export function GameProvider({
     [persist, checkExternalAchievements, applyExternalAchievements]
   );
 
+  const upgradeItem = useCallback(
+    (itemId: string): boolean => {
+      let success = false;
+      setGameData((prev) => {
+        const { SHOP_ITEMS } =
+          require("@/constants/shopItems") as typeof import("@/constants/shopItems");
+        const item = SHOP_ITEMS.find((i) => i.id === itemId);
+        if (!item || !item.starCoinsPerHour || !prev.ownedItems.includes(itemId)) return prev;
+        const currentLevel = getStoredItemLevel(prev.itemLevels, itemId);
+        if (currentLevel >= MAX_ITEM_LEVEL) return prev;
+        const cost = getItemUpgradeCost(item.price, currentLevel);
+        if (!settingsRef.current.devUnlimitedMoney && prev.points < cost) return prev;
+        success = true;
+        const next: GameData = {
+          ...prev,
+          points: settingsRef.current.devUnlimitedMoney ? prev.points : prev.points - cost,
+          itemLevels: { ...prev.itemLevels, [itemId]: currentLevel + 1 },
+        };
+        persist(next, settingsRef.current);
+        return next;
+      });
+      return success;
+    },
+    [persist]
+  );
+
   const equipItem = useCallback(
     (slot: string, itemId: string | null) => {
       setGameData((prev) => {
@@ -388,6 +692,20 @@ export function GameProvider({
         };
         if (itemId === null) delete next.equippedItems[slot];
         else next.equippedItems[slot] = itemId;
+        persist(next, settingsRef.current);
+        return next;
+      });
+    },
+    [persist]
+  );
+
+  const updateClassroomLayout = useCallback(
+    (layout: Record<string, ClassroomItemLayout>) => {
+      setGameData((prev) => {
+        const next: GameData = {
+          ...prev,
+          classroomLayout: layout,
+        };
         persist(next, settingsRef.current);
         return next;
       });
@@ -413,10 +731,15 @@ export function GameProvider({
         if (!settingsRef.current.devUnlimitedMoney && prev.points < animal.price)
           return prev;
         success = true;
+        const levelKey = getAnimalLevelKey(type, id);
         let next: GameData = {
           ...prev,
           points: settingsRef.current.devUnlimitedMoney ? prev.points : prev.points - animal.price,
           [ownedKey]: [...prev[ownedKey], id],
+          itemLevels: {
+            ...prev.itemLevels,
+            [levelKey]: getStoredItemLevel(prev.itemLevels, levelKey),
+          },
         };
         const extIds = checkExternalAchievements(next);
         next = applyExternalAchievements(next, extIds);
@@ -426,6 +749,40 @@ export function GameProvider({
       return success;
     },
     [persist, checkExternalAchievements, applyExternalAchievements]
+  );
+
+  const upgradeAnimal = useCallback(
+    (id: string, type: "aquarium" | "zoo"): boolean => {
+      let success = false;
+      setGameData((prev) => {
+        const { AQUARIUM_ANIMALS } =
+          require("@/constants/aquariumAnimals") as typeof import("@/constants/aquariumAnimals");
+        const { ZOO_ANIMALS } =
+          require("@/constants/zooAnimals") as typeof import("@/constants/zooAnimals");
+        const animal =
+          type === "aquarium"
+            ? AQUARIUM_ANIMALS.find((a) => a.id === id)
+            : ZOO_ANIMALS.find((a) => a.id === id);
+        if (!animal) return prev;
+        const ownedKey = type === "aquarium" ? "aquariumAnimals" : "zooAnimals";
+        if (!prev[ownedKey].includes(id)) return prev;
+        const levelKey = getAnimalLevelKey(type, id);
+        const currentLevel = getStoredItemLevel(prev.itemLevels, levelKey);
+        if (currentLevel >= MAX_ITEM_LEVEL) return prev;
+        const cost = getItemUpgradeCost(animal.price, currentLevel);
+        if (!settingsRef.current.devUnlimitedMoney && prev.points < cost) return prev;
+        success = true;
+        const next: GameData = {
+          ...prev,
+          points: settingsRef.current.devUnlimitedMoney ? prev.points : prev.points - cost,
+          itemLevels: { ...prev.itemLevels, [levelKey]: currentLevel + 1 },
+        };
+        persist(next, settingsRef.current);
+        return next;
+      });
+      return success;
+    },
+    [persist]
   );
 
   const toggleDisplayAnimal = useCallback(
@@ -468,6 +825,20 @@ export function GameProvider({
         return next;
       });
       return success;
+    },
+    [persist]
+  );
+
+  const updateLaunchGameState = useCallback(
+    (state: LaunchGameState | null) => {
+      setGameData((prev) => {
+        const next: GameData = {
+          ...prev,
+          launchGameState: state,
+        };
+        persist(next, settingsRef.current);
+        return next;
+      });
     },
     [persist]
   );
@@ -609,6 +980,7 @@ export function GameProvider({
   const getRate = useCallback(() => getPassiveRate(gameData), [gameData]);
   const getDrillMultiplierCallback = useCallback(() => getDrillMultiplier(gameData), [gameData]);
   const getDrillCoinBonusCallback = useCallback(() => getDrillCoinBonus(gameData), [gameData]);
+  const getLevelInfoCallback = useCallback((points: number) => getLevelInfo(points), []);
 
   return (
     <GameContext.Provider
@@ -617,14 +989,19 @@ export function GameProvider({
         settings,
         updateSettings,
         saveSession,
+        addDrillTickRewards,
         lastSession,
         setLastSession,
         claimBonus,
         purchaseItem,
+        upgradeItem,
         equipItem,
+        updateClassroomLayout,
         buyAnimal,
+        upgradeAnimal,
         toggleDisplayAnimal,
         buyRocketPart,
+        updateLaunchGameState,
         completeLaunch,
         addPlanetGem,
         spendStarCoins,
@@ -634,6 +1011,7 @@ export function GameProvider({
         getDrillMultiplier: getDrillMultiplierCallback,
         getDrillCoinBonus: getDrillCoinBonusCallback,
         getLevel,
+        getLevelInfo: getLevelInfoCallback,
         resetGameProgress,
         resetAchievements,
         setDevUnlimitedMoney,

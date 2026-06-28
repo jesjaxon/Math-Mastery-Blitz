@@ -2,34 +2,46 @@ import * as Haptics from "expo-haptics";
 import { Feather } from "@expo/vector-icons";
 import React from "react";
 import {
-  Dimensions,
   Platform,
   StyleSheet,
   Text,
   TouchableOpacity,
+  useWindowDimensions,
   View,
 } from "react-native";
+import { useGame } from "@/context/GameContext";
 import { useColors } from "@/hooks/useColors";
+import { playGameSound } from "@/utils/gameAudio";
 
 interface NumberPadProps {
   onPress: (key: string) => void;
   disabled?: boolean;
 }
 
-const KEYS = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "del", "0", ""];
+const KEYS = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "", "0", "del"];
 
-const { width } = Dimensions.get("window");
+const SCREEN_SIDE_PADDING = 40;
 const PAD_PADDING = 16;
-const BTN_SIZE = Math.min((width - PAD_PADDING * 2 - 12) / 3, 110);
+const GRID_GAP = 8;
+const MAX_BTN_WIDTH = 104;
 
 export default function NumberPad({ onPress, disabled = false }: NumberPadProps) {
   const colors = useColors();
+  const { settings } = useGame();
+  const { width } = useWindowDimensions();
+  const usableWidth = width - SCREEN_SIDE_PADDING - PAD_PADDING * 2;
+  const btnWidth = Math.min(
+    (usableWidth - GRID_GAP * 2) / 3,
+    MAX_BTN_WIDTH
+  );
+  const btnHeight = Math.max(58, btnWidth * 0.72);
 
   const handlePress = (key: string) => {
     if (!key || disabled) return;
-    if (Platform.OS !== "web") {
+    if (settings.hapticsEnabled && Platform.OS !== "web") {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
     }
+    playGameSound("keyTap", settings.soundEnabled, settings.soundVolume);
     onPress(key);
   };
 
@@ -51,8 +63,8 @@ export default function NumberPad({ onPress, disabled = false }: NumberPadProps)
                   : colors.card,
                 borderColor: colors.border,
                 opacity: disabled ? 0.4 : 1,
-                width: BTN_SIZE,
-                height: BTN_SIZE * 0.72,
+                width: btnWidth,
+                height: btnHeight,
               },
             ]}
             onPress={() => handlePress(key)}
@@ -84,7 +96,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     flexWrap: "wrap",
     justifyContent: "center",
-    gap: 6,
+    gap: GRID_GAP,
     paddingHorizontal: PAD_PADDING,
   },
   btn: {

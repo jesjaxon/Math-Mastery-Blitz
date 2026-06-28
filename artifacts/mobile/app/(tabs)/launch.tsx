@@ -1,3 +1,4 @@
+import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { router } from "expo-router";
 import React, {
@@ -10,6 +11,8 @@ import React, {
 import {
   Dimensions,
   GestureResponderEvent,
+  Image,
+  ImageBackground,
   PanResponder,
   PanResponderGestureState,
   Platform,
@@ -21,7 +24,10 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { EARTH_BODY, SOLAR_SYSTEM, SUN_BODY } from "@/constants/planets";
-import { useGame } from "@/context/GameContext";
+import { RESULT_ASSETS } from "@/constants/resultAssets";
+import { PLANET_ASSETS, SPACE_ASSETS } from "@/constants/spaceAssets";
+import { type LaunchGameState, useGame } from "@/context/GameContext";
+import { playGameSound, startLoopingGameSound, stopLoopingGameSound } from "@/utils/gameAudio";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -197,7 +203,15 @@ function ThrusterBtn({ label, onIn, onOut }: { label: string; onIn: () => void; 
 
 export default function LaunchScreen() {
   const insets = useSafeAreaInsets();
-  const { completeLaunch, addPlanetGem, spendStarCoins, gameData, settings } = useGame();
+  const {
+    completeLaunch,
+    addPlanetGem,
+    spendStarCoins,
+    updateLaunchGameState,
+    gameData,
+    settings,
+    isLoaded,
+  } = useGame();
   const topPad    = Platform.OS === "web" ? 67 : insets.top;
   const bottomPad = Platform.OS === "web" ? 34 : insets.bottom;
 
@@ -221,8 +235,89 @@ export default function LaunchScreen() {
   const thrustersRef  = useRef<Set<ThrustDir>>(new Set());
   const panRef        = useRef({ lastX: 0, lastY: 0, totalDist: 0 });
   const nextIdRef     = useRef(1);
+  const restoredRef   = useRef(false);
+  const lastSaveRef   = useRef(0);
 
   useEffect(() => { camRef.current = cam; }, [cam]);
+
+  const buildLaunchSnapshot = useCallback((): LaunchGameState => ({
+    phase: phaseRef.current,
+    cam: camRef.current,
+    selectedId,
+    activeIdx: activeIdxRef.current,
+    nextRocketId: nextIdRef.current,
+    rockets: rocketsRef.current.map((r) => ({
+      id: r.id,
+      x: r.x,
+      y: r.y,
+      vx: r.vx,
+      vy: r.vy,
+      trail: r.trail,
+      visited: Array.from(r.visited),
+      inZone: Array.from(r.inZone),
+      minedIds: r.minedIds,
+      status: r.status,
+      flightTraj: r.flightTraj,
+      tickCount: r.tickCount,
+    })),
+    updatedAt: Date.now(),
+  }), [selectedId]);
+
+  const saveLaunchSnapshot = useCallback((force = false) => {
+    if (!restoredRef.current) return;
+    const now = Date.now();
+    if (!force && now - lastSaveRef.current < 800) return;
+    lastSaveRef.current = now;
+    updateLaunchGameState(buildLaunchSnapshot());
+  }, [buildLaunchSnapshot, updateLaunchGameState]);
+
+  useEffect(() => {
+    if (!isLoaded || restoredRef.current) return;
+    const saved = gameData.launchGameState;
+    if (saved) {
+      const safeActiveIdx = Math.max(0, Math.min(saved.activeIdx, Math.max(0, saved.rockets.length - 1)));
+      const restoredRockets: RocketState[] = saved.rockets.map((r) => ({
+        id: r.id,
+        x: r.x,
+        y: r.y,
+        vx: r.vx,
+        vy: r.vy,
+        trail: r.trail ?? [],
+        visited: new Set(r.visited ?? []),
+        inZone: new Set(r.inZone ?? []),
+        minedIds: r.minedIds ?? [],
+        status: r.status,
+        flightTraj: r.flightTraj ?? [],
+        tickCount: r.tickCount ?? 0,
+      }));
+
+      rocketsRef.current = restoredRockets;
+      nextIdRef.current = Math.max(
+        saved.nextRocketId ?? 1,
+        restoredRockets.reduce((max, r) => Math.max(max, r.id + 1), 1)
+      );
+      activeIdxRef.current = safeActiveIdx;
+      phaseRef.current = saved.phase;
+      camRef.current = saved.cam;
+      setActiveIdx(safeActiveIdx);
+      setRocketCount(restoredRockets.length);
+      setSelectedId(saved.selectedId ?? null);
+      setPhase(saved.phase);
+      setCam(saved.cam);
+      if (saved.phase === "flying" && restoredRockets.some((r) => r.status === "flying")) {
+        setLoopRunning(true);
+      }
+    }
+    restoredRef.current = true;
+  }, [gameData.launchGameState, isLoaded]);
+
+  useEffect(() => () => {
+    saveLaunchSnapshot(true);
+  }, [saveLaunchSnapshot]);
+
+  useEffect(() => {
+    saveLaunchSnapshot();
+  }, [activeIdx, cam, phase, renderTick, rocketCount, saveLaunchSnapshot, selectedId]);
 
   // ── Derived ───────────────────────────────────────────────────────────────
   const selectedPlanet = useMemo(() => SOLAR_SYSTEM.find((b) => b.id === selectedId) ?? null, [selectedId]);
@@ -274,6 +369,7 @@ export default function LaunchScreen() {
     if (r.status !== "flying") return;
     r.status = result;
     if (result === "win") {
+      playGameSound("spaceReturnEarth", settings.soundEnabled, settings.soundVolume);
       completeLaunch();
       r.visited.forEach((id) => addPlanetGem(id));
       if (Platform.OS !== "web") Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
@@ -286,7 +382,7 @@ export default function LaunchScreen() {
       setLoopRunning(false);
     }
     setRocketCount((c) => c + 1); // force re-render of switcher
-  }, [completeLaunch, addPlanetGem, stopLoop]);
+  }, [completeLaunch, addPlanetGem, settings.soundEnabled, settings.soundVolume, stopLoop]);
 
   const finishRocketRef = useRef(finishRocket);
   useEffect(() => { finishRocketRef.current = finishRocket; }, [finishRocket]);
@@ -407,6 +503,7 @@ export default function LaunchScreen() {
     rocketsRef.current = [];
     nextIdRef.current = 1;
     thrustersRef.current.clear();
+    stopLoopingGameSound("spaceThruster");
     activeIdxRef.current = 0;
     setActiveIdx(0);
     setRocketCount(0);
@@ -417,7 +514,8 @@ export default function LaunchScreen() {
     setSelectedId(null);
     const next: Cam = { x: EARTH_BODY.x, y: EARTH_BODY.y, zoom: 1.2 };
     setCam(next); camRef.current = next;
-  }, [stopLoop]);
+    updateLaunchGameState(null);
+  }, [stopLoop, updateLaunchGameState]);
 
   // ── Tap handler ───────────────────────────────────────────────────────────
   const handleTap = useCallback((sx: number, sy: number) => {
@@ -437,8 +535,28 @@ export default function LaunchScreen() {
   useEffect(() => { handleTapRef.current = handleTap; }, [handleTap]);
 
   // ── Thrusters ─────────────────────────────────────────────────────────────
-  const addThrust    = useCallback((d: ThrustDir) => { thrustersRef.current.add(d); if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {}); }, []);
-  const removeThrust = useCallback((d: ThrustDir) => { thrustersRef.current.delete(d); }, []);
+  const addThrust    = useCallback((d: ThrustDir) => {
+    const wasIdle = thrustersRef.current.size === 0;
+    thrustersRef.current.add(d);
+    if (wasIdle) startLoopingGameSound("spaceThruster", settings.soundEnabled, settings.soundVolume);
+    if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+  }, [settings.soundEnabled, settings.soundVolume]);
+  const removeThrust = useCallback((d: ThrustDir) => {
+    thrustersRef.current.delete(d);
+    if (thrustersRef.current.size === 0) stopLoopingGameSound("spaceThruster");
+  }, []);
+
+  useEffect(() => {
+    if (phase !== "flying" || activeRocket?.status !== "flying") {
+      thrustersRef.current.clear();
+      stopLoopingGameSound("spaceThruster");
+    }
+  }, [phase, activeRocket?.status]);
+
+  useEffect(() => () => {
+    thrustersRef.current.clear();
+    stopLoopingGameSound("spaceThruster");
+  }, []);
 
   // ── PanResponder ──────────────────────────────────────────────────────────
   const handlersRef = useRef<{
@@ -541,6 +659,7 @@ export default function LaunchScreen() {
               r.inZone.add(body.id);
               r.visited.add(body.id);
               r.minedIds.push(body.id);
+              playGameSound("spacePlanetMined", settings.soundEnabled, settings.soundVolume);
               if (Platform.OS !== "web") Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
             } else if (!inside && wasInside) {
               r.inZone.delete(body.id);
@@ -581,6 +700,8 @@ export default function LaunchScreen() {
 
   return (
     <View style={styles.root} {...panResponder.panHandlers}>
+      <Image source={SPACE_ASSETS.background} style={styles.spaceBg} resizeMode="cover" />
+      <View pointerEvents="none" style={styles.spaceTint} />
 
       {/* Stars */}
       {STAR_FIELD.map((star, i) => {
@@ -600,7 +721,7 @@ export default function LaunchScreen() {
         if (bs.x < -margin || bs.x > W + margin || bs.y < -margin || bs.y > H + margin) return null;
         const rScr = Math.max(10, body.radius * cam.zoom);
         const isSelected = selectedId === body.id;
-        const emojiSize = Math.min(rScr * 1.9, 52);
+        const assetSize = Math.min(Math.max(rScr * 2.25, body.isSun ? 58 : 34), body.isSun ? 180 : 96);
         const showLabel = cam.zoom > 0.1 && !body.isSun;
         const anyMined = rockets.some((r) => r.minedIds.includes(body.id));
         return (
@@ -617,14 +738,18 @@ export default function LaunchScreen() {
               alignItems: "center", justifyContent: "center",
               borderWidth: anyMined ? 2 : 0, borderColor: "#00D9A3",
             }}>
-              <Text style={{ fontSize: emojiSize, lineHeight: emojiSize + 4 }}>{body.emoji}</Text>
+              <Image
+                source={PLANET_ASSETS[body.id]}
+                style={{ width: assetSize, height: assetSize }}
+                resizeMode="contain"
+              />
             </View>
             {showLabel && (
               <View style={{ position: "absolute", left: bs.x - 55, top: bs.y + rScr + 3, width: 110, alignItems: "center" }}>
                 <Text style={{ color: isSelected ? "#fff" : body.color, fontSize: 10, fontFamily: "Inter_600SemiBold", textAlign: "center" }}>
-                  {body.name}{body.gem ? `  ${body.gem}` : ""}
+                  {body.name}
                 </Text>
-                {anyMined && <Text style={{ color: "#00D9A3", fontSize: 9, fontFamily: "Inter_400Regular" }}>✓ Mined</Text>}
+                {anyMined && <Text style={{ color: "#00D9A3", fontSize: 9, fontFamily: "Inter_400Regular" }}>Mined</Text>}
               </View>
             )}
           </View>
@@ -706,17 +831,17 @@ export default function LaunchScreen() {
         );
       })()}
 
-      {/* All rockets (emoji) */}
+      {/* All rockets */}
       {(phase === "aim" || phase === "flying") && (() => {
         const items: React.ReactNode[] = [];
         // Aim-mode rocket at Earth orbit
         if (phase === "aim") {
           items.push(
             <View key="aim_rocket" pointerEvents="none" style={{
-              position: "absolute", left: aimRocketPos.x - 14, top: aimRocketPos.y - 14,
-              width: 28, height: 28, alignItems: "center", justifyContent: "center", zIndex: 5,
+              position: "absolute", left: aimRocketPos.x - 18, top: aimRocketPos.y - 18,
+              width: 36, height: 36, alignItems: "center", justifyContent: "center", zIndex: 5,
             }}>
-              <Text style={{ fontSize: 22 }}>🚀</Text>
+              <Image source={SPACE_ASSETS.rocket} style={styles.rocketAsset} resizeMode="contain" />
             </View>
           );
         }
@@ -726,14 +851,18 @@ export default function LaunchScreen() {
           const rAngle = Math.atan2(rk.vy, rk.vx) * (180 / Math.PI) + 90;
           const isActive = ri === activeIdx;
           const col = ROCKET_COLORS[ri % ROCKET_COLORS.length];
-          const statusEmoji = rk.status === "win" ? "✅" : rk.status === "crash" ? "💥" : rk.status === "lost" ? "🌌" : null;
+          const statusLabel = rk.status === "win" ? "OK" : rk.status === "crash" ? "X" : rk.status === "lost" ? "Lost" : null;
           items.push(
             <View key={`rk${ri}`} pointerEvents="none" style={{
-              position: "absolute", left: rPos.x - 16, top: rPos.y - 16,
-              width: 32, height: 32, alignItems: "center", justifyContent: "center",
+              position: "absolute", left: rPos.x - 18, top: rPos.y - 18,
+              width: 36, height: 36, alignItems: "center", justifyContent: "center",
               transform: [{ rotate: `${rAngle}deg` }], zIndex: 5,
             }}>
-              <Text style={{ fontSize: statusEmoji ? 18 : 22 }}>{statusEmoji ?? "🚀"}</Text>
+              {statusLabel ? (
+                <Text style={styles.rocketStatusText}>{statusLabel}</Text>
+              ) : (
+                <Image source={SPACE_ASSETS.rocket} style={styles.rocketAsset} resizeMode="contain" />
+              )}
             </View>
           );
           // Number badge (non-active, or when multiple)
@@ -785,7 +914,7 @@ export default function LaunchScreen() {
             width: 22, height: 22, alignItems: "center", justifyContent: "center",
             transform: [{ rotate: `${arrow.angle * 180 / Math.PI + 90}deg` }], opacity: 0.95,
           }}>
-            <Text style={{ fontSize: 18, lineHeight: 20 }}>🌍</Text>
+            <Image source={PLANET_ASSETS.earth} style={styles.edgePlanetAsset} resizeMode="contain" />
           </View>
         );
       })()}
@@ -793,9 +922,17 @@ export default function LaunchScreen() {
       {/* ── HUD: top bar ─────────────────────────────────────────────────── */}
       <View style={[styles.hudTop, { paddingTop: topPad + 6 }]} pointerEvents="box-none">
         <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
-          <Text style={styles.backBtnText}>‹ Back</Text>
+          <Text style={styles.backBtnText}>Back</Text>
         </TouchableOpacity>
-        <Text style={styles.coinBalance}>🪙 {gameData.starCoins.toLocaleString()}</Text>
+        <View style={styles.hudRight}>
+          <View style={styles.coinPill}>
+            <Image source={RESULT_ASSETS.starCoins} style={styles.coinIcon} resizeMode="contain" />
+            <Text style={styles.coinBalance}>{gameData.starCoins.toLocaleString()}</Text>
+          </View>
+          <TouchableOpacity style={styles.hudSettingsBtn} onPress={() => router.push("/settings" as any)}>
+            <Feather name="settings" size={20} color="#D9DBEA" />
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* Rocket switcher (shown when flying or all done) */}
@@ -815,9 +952,9 @@ export default function LaunchScreen() {
                   }]}
                   onPress={() => switchRocket(ri)}
                 >
-                  <Text style={{ fontSize: 13 }}>🚀</Text>
+                  <Image source={SPACE_ASSETS.rocket} style={styles.switcherRocketAsset} resizeMode="contain" />
                   <Text style={[styles.switcherLabel, { color: statusColor }]}>
-                    {ri + 1}{rk.status === "win" ? "✓" : rk.status === "crash" ? "✕" : rk.status === "lost" ? "~" : ""}
+                    {ri + 1}{rk.status === "win" ? " OK" : rk.status === "crash" ? " X" : rk.status === "lost" ? " Lost" : ""}
                   </Text>
                 </TouchableOpacity>
               );
@@ -825,7 +962,6 @@ export default function LaunchScreen() {
             {/* Fly Again when all done */}
             {allDone && (
               <TouchableOpacity style={[styles.switcherBtn, { borderColor: "#7C6FFF66", backgroundColor: "#7C6FFF22" }]} onPress={resetAll}>
-                <Text style={{ fontSize: 13 }}>🔄</Text>
                 <Text style={[styles.switcherLabel, { color: "#7C6FFF" }]}>Reset</Text>
               </TouchableOpacity>
             )}
@@ -853,11 +989,11 @@ export default function LaunchScreen() {
           {selectedPlanet ? (
             <>
               <View style={styles.planetRow}>
-                <Text style={styles.planetEmojiLg}>{selectedPlanet.emoji}</Text>
+                <Image source={PLANET_ASSETS[selectedPlanet.id]} style={styles.planetAssetLg} resizeMode="contain" />
                 <View style={styles.planetInfo}>
                   <Text style={styles.planetNameText}>{selectedPlanet.name}</Text>
-                  {selectedPlanet.gem && <Text style={styles.planetGemText}>{selectedPlanet.gem} {selectedPlanet.gemName}</Text>}
-                  <Text style={styles.planetSubText}>🪙 {selectedPlanet.launchCost.toLocaleString()}  ·  ⏱ {selectedPlanet.travelHint}</Text>
+                  {selectedPlanet.gem && <Text style={styles.planetGemText}>{selectedPlanet.gemName}</Text>}
+                  <Text style={styles.planetSubText}>Cost {selectedPlanet.launchCost.toLocaleString()} Star Coins  ·  {selectedPlanet.travelHint}</Text>
                 </View>
               </View>
               <View style={styles.actionRow}>
@@ -865,21 +1001,21 @@ export default function LaunchScreen() {
                   style={[styles.actionBtn, styles.actionBtnPrimary, !canAfford && styles.actionBtnOff]}
                   onPress={startMission} disabled={!canAfford} activeOpacity={0.8}
                 >
-                  <Text style={[styles.actionBtnText, !canAfford && { color: "#555" }]}>🎯 Aim & Launch</Text>
+                  <Text style={[styles.actionBtnText, !canAfford && { color: "#555" }]}>Aim & Launch</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={[styles.actionBtn, styles.actionBtnOrbit, !canAfford && styles.actionBtnOff]}
                   onPress={launchOrbit} disabled={!canAfford} activeOpacity={0.8}
                 >
-                  <Text style={[styles.actionBtnText, !canAfford && { color: "#555" }]}>🪐 Auto Orbit</Text>
+                  <Text style={[styles.actionBtnText, !canAfford && { color: "#555" }]}>Auto Orbit</Text>
                 </TouchableOpacity>
               </View>
               {!canAfford && (
-                <Text style={styles.cantAffordText}>Need 🪙 {selectedPlanet.launchCost.toLocaleString()} · Have {gameData.starCoins.toLocaleString()}</Text>
+                <Text style={styles.cantAffordText}>Need {selectedPlanet.launchCost.toLocaleString()} Star Coins · Have {gameData.starCoins.toLocaleString()} Star Coins</Text>
               )}
             </>
           ) : (
-            <Text style={styles.selectHint}>🔭  Zoom out with − to see all planets  ·  Tap one to select</Text>
+            <Text style={styles.selectHint}>Zoom out with - to see all planets · Tap one to select</Text>
           )}
         </View>
       )}
@@ -888,14 +1024,14 @@ export default function LaunchScreen() {
       {phase === "aim" && (
         <View style={[styles.aimCard, { paddingBottom: bottomPad + 14 }]} pointerEvents="box-none">
           <Text style={styles.aimTitle}>
-            {drag ? `⚡ Power ${slingshotPower}%  ·  Release to launch!`
-                  : "Drag anywhere to aim · Use +/− to zoom · Release to fire 🚀"}
+            {drag ? `Power ${slingshotPower}% · Release to launch!`
+                  : "Drag anywhere to aim · Use +/- to zoom · Release to fire"}
           </Text>
           {selectedPlanet && (
-            <Text style={styles.aimTarget}>Target: {selectedPlanet.emoji} {selectedPlanet.name}  ·  {selectedPlanet.travelHint}</Text>
+            <Text style={styles.aimTarget}>Target: {selectedPlanet.name} · {selectedPlanet.travelHint}</Text>
           )}
           <TouchableOpacity style={styles.cancelBtn} onPress={cancelAim}>
-            <Text style={styles.cancelBtnText}>✕ Cancel</Text>
+            <Text style={styles.cancelBtnText}>Cancel</Text>
           </TouchableOpacity>
         </View>
       )}
@@ -907,7 +1043,7 @@ export default function LaunchScreen() {
           <View style={styles.navBar}>
             {selectedPlanet ? (
               <View style={styles.navBarInner}>
-                <Text style={{ fontSize: 24 }}>{selectedPlanet.emoji}</Text>
+                <Image source={PLANET_ASSETS[selectedPlanet.id]} style={styles.navPlanetAsset} resizeMode="contain" />
                 <View style={{ flex: 1 }}>
                   <Text style={styles.navBarTitle}>{selectedPlanet.name}</Text>
                   <Text style={styles.navBarSub}>
@@ -916,7 +1052,7 @@ export default function LaunchScreen() {
                 </View>
                 {ar.minedIds.length > 0 && (
                   <TouchableOpacity style={styles.returnBtn} onPress={boostToEarth}>
-                    <Text style={styles.returnBtnText}>🌍 Home</Text>
+                    <Text style={styles.returnBtnText}>Home</Text>
                   </TouchableOpacity>
                 )}
               </View>
@@ -924,12 +1060,12 @@ export default function LaunchScreen() {
               <View style={styles.navBarInner}>
                 <Text style={styles.navBarNoTarget}>
                   {ar.minedIds.length > 0
-                    ? `${ar.minedIds.map((id) => SOLAR_SYSTEM.find((b) => b.id === id)?.gem ?? "").join(" ")} Mined!`
-                    : `🚀 ${flightSpeed} wu/t  ·  Select a planet to see nav`}
+                    ? `${ar.minedIds.length} stones mined`
+                    : `${flightSpeed} wu/t · Select a planet to see nav`}
                 </Text>
                 {ar.minedIds.length > 0 && (
                   <TouchableOpacity style={styles.returnBtn} onPress={boostToEarth}>
-                    <Text style={styles.returnBtnText}>🌍 Home</Text>
+                    <Text style={styles.returnBtnText}>Home</Text>
                   </TouchableOpacity>
                 )}
               </View>
@@ -939,7 +1075,7 @@ export default function LaunchScreen() {
           {/* Add Rocket button */}
           {rockets.length < MAX_ROCKETS && rockets.filter((r) => r.status === "flying").length < MAX_ROCKETS && selectedPlanet && canAfford && (
             <TouchableOpacity style={styles.addRocketBtn} onPress={addRocketAim} activeOpacity={0.8}>
-              <Text style={styles.addRocketText}>＋ Add Rocket  🪙{selectedPlanet.launchCost.toLocaleString()}</Text>
+              <Text style={styles.addRocketText}>+ Add Rocket  {selectedPlanet.launchCost.toLocaleString()} Star Coins</Text>
             </TouchableOpacity>
           )}
         </View>
@@ -953,7 +1089,7 @@ export default function LaunchScreen() {
           </View>
           <View style={styles.thrusterRow}>
             <ThrusterBtn label="◀" onIn={() => addThrust("L")} onOut={() => removeThrust("L")} />
-            <View style={styles.thrusterCenter}><Text style={styles.thrusterDot}>✦</Text></View>
+            <View style={styles.thrusterCenter}><View style={styles.thrusterDot} /></View>
             <ThrusterBtn label="▶" onIn={() => addThrust("R")} onOut={() => removeThrust("R")} />
           </View>
           <View style={styles.thrusterRow}>
@@ -965,9 +1101,6 @@ export default function LaunchScreen() {
       {/* ALL DONE overlay */}
       {allDone && rockets.length > 0 && (
         <View style={[styles.resultOverlay, { paddingBottom: bottomPad + 16 }]} pointerEvents="box-none">
-          <Text style={{ fontSize: 44 }}>
-            {rockets.every((r) => r.status === "win") ? "🎉" : rockets.some((r) => r.status === "win") ? "🏅" : "💥"}
-          </Text>
           <Text style={[styles.resultTitle, {
             color: rockets.some((r) => r.status === "win") ? "#00D9A3" : "#FF4757"
           }]}>
@@ -978,18 +1111,25 @@ export default function LaunchScreen() {
           {/* Gem summary */}
           {rockets.some((r) => r.minedIds.length > 0) && (
             <View style={styles.gemsBox}>
-              <Text style={styles.gemsTitle}>Gems collected:</Text>
-              <Text style={{ fontSize: 26, letterSpacing: 3, marginVertical: 4 }}>
-                {rockets.flatMap((r) => r.minedIds).map((id) => SOLAR_SYSTEM.find((b) => b.id === id)?.gem ?? "").join("  ")}
-              </Text>
+              <Text style={styles.gemsTitle}>Stones collected:</Text>
+              <View style={styles.collectedRow}>
+                {rockets.flatMap((r) => r.minedIds).map((id, index) => (
+                  <Image
+                    key={`${id}-${index}`}
+                    source={PLANET_ASSETS[id]}
+                    style={styles.collectedAsset}
+                    resizeMode="contain"
+                  />
+                ))}
+              </View>
             </View>
           )}
           <View style={{ flexDirection: "row", gap: 10, width: "100%" }}>
             <TouchableOpacity style={[styles.resultBtn, { backgroundColor: "#7C6FFF", flex: 1 }]} onPress={resetAll}>
-              <Text style={styles.resultBtnText}>🔄 Fly Again</Text>
+              <Text style={styles.resultBtnText}>Fly Again</Text>
             </TouchableOpacity>
             <TouchableOpacity style={[styles.resultBtn, { borderWidth: 1, borderColor: "#444", flex: 1 }]} onPress={() => router.back()}>
-              <Text style={[styles.resultBtnText, { color: "#888" }]}>🏠 Base</Text>
+              <Text style={[styles.resultBtnText, { color: "#888" }]}>Base</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -1002,13 +1142,53 @@ export default function LaunchScreen() {
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: "#02020E" },
+  spaceBg: {
+    ...StyleSheet.absoluteFillObject,
+    width: "100%",
+    height: "100%",
+  },
+  spaceTint: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(0,0,10,0.28)",
+  },
+  rocketAsset: { width: 36, height: 36 },
+  rocketStatusText: {
+    color: "#FFD166",
+    fontSize: 11,
+    fontFamily: "Inter_700Bold",
+    textAlign: "center",
+  },
+  edgePlanetAsset: { width: 22, height: 22 },
   hudTop: {
     position: "absolute", top: 0, left: 16, right: 16,
     flexDirection: "row", alignItems: "center", justifyContent: "space-between", zIndex: 20,
   },
   backBtn: { paddingHorizontal: 6, paddingVertical: 6 },
-  backBtnText: { color: "#aaa", fontSize: 16, fontFamily: "Inter_600SemiBold" },
-  coinBalance: { color: "#FFD166", fontSize: 14, fontFamily: "Inter_700Bold" },
+  backBtnText: { color: "#D9DBEA", fontSize: 16, fontFamily: "Inter_700Bold" },
+  hudRight: { flexDirection: "row", alignItems: "center", gap: 8 },
+  hudSettingsBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(18, 16, 37, 0.78)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.14)",
+  },
+  coinPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 7,
+    minHeight: 42,
+    borderRadius: 16,
+    paddingHorizontal: 12,
+    backgroundColor: "rgba(18, 16, 37, 0.78)",
+    borderWidth: 1,
+    borderColor: "rgba(255,209,102,0.28)",
+  },
+  coinIcon: { width: 25, height: 25 },
+  coinBalance: { color: "#FFD166", fontSize: 16, fontFamily: "Inter_700Bold" },
   // Rocket switcher
   switcherRow: { position: "absolute", left: 0, right: 0, zIndex: 20 },
   switcherInner: { paddingHorizontal: 14, gap: 6, flexDirection: "row", alignItems: "center" },
@@ -1017,6 +1197,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10,
     borderWidth: 1.5,
   },
+  switcherRocketAsset: { width: 18, height: 18 },
   switcherLabel: { fontSize: 12, fontFamily: "Inter_700Bold" },
   // Zoom
   zoomBtns: { position: "absolute", right: 14, gap: 6, zIndex: 20 },
@@ -1031,6 +1212,7 @@ const styles = StyleSheet.create({
   },
   planetRow: { flexDirection: "row", gap: 12, alignItems: "center" },
   planetEmojiLg: { fontSize: 40 },
+  planetAssetLg: { width: 58, height: 58 },
   planetInfo: { flex: 1, gap: 2 },
   planetNameText: { color: "#fff", fontSize: 18, fontFamily: "Inter_700Bold" },
   planetGemText: { color: "#FFD166", fontSize: 13, fontFamily: "Inter_400Regular" },
@@ -1062,6 +1244,7 @@ const styles = StyleSheet.create({
     padding: 10,
   },
   navBarInner: { flexDirection: "row", alignItems: "center", gap: 8 },
+  navPlanetAsset: { width: 34, height: 34 },
   navBarTitle: { color: "#fff", fontSize: 13, fontFamily: "Inter_700Bold" },
   navBarSub: { color: "#666", fontSize: 11, fontFamily: "Inter_400Regular" },
   navBarNoTarget: { flex: 1, color: "#555", fontSize: 12, fontFamily: "Inter_400Regular" },
@@ -1088,7 +1271,7 @@ const styles = StyleSheet.create({
   },
   thrusterBtnText: { color: "#8AB4FF", fontSize: 16, fontFamily: "Inter_700Bold" },
   thrusterCenter: { width: 42, height: 42, alignItems: "center", justifyContent: "center", opacity: 0.3 },
-  thrusterDot: { color: "#8AB4FF", fontSize: 14 },
+  thrusterDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: "#8AB4FF" },
   // Result overlay
   resultOverlay: {
     position: "absolute", bottom: 0, left: 18, right: 18,
@@ -1099,6 +1282,14 @@ const styles = StyleSheet.create({
   resultTitle: { fontSize: 22, fontFamily: "Inter_700Bold", textAlign: "center" },
   gemsBox: { alignItems: "center", gap: 2 },
   gemsTitle: { color: "#888", fontSize: 12, fontFamily: "Inter_400Regular" },
+  collectedRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "center",
+    gap: 8,
+    marginVertical: 4,
+  },
+  collectedAsset: { width: 34, height: 34 },
   resultBtn: { borderRadius: 14, paddingVertical: 13, paddingHorizontal: 20, alignItems: "center" },
   resultBtnText: { color: "#fff", fontSize: 15, fontFamily: "Inter_700Bold" },
 });
