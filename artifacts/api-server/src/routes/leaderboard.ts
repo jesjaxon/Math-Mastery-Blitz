@@ -124,6 +124,17 @@ function hasSupabaseConfig() {
   return Boolean(supabaseUrl && supabaseServiceRoleKey);
 }
 
+function supabaseHeaders(extra?: Record<string, string>) {
+  const headers: Record<string, string> = {
+    apikey: supabaseServiceRoleKey!,
+    ...extra,
+  };
+  if (!supabaseServiceRoleKey?.startsWith("sb_secret_")) {
+    headers["Authorization"] = `Bearer ${supabaseServiceRoleKey}`;
+  }
+  return headers;
+}
+
 function toDbEntry(entry: LeaderboardEntry) {
   return {
     id: entry.id,
@@ -186,10 +197,7 @@ async function fetchSupabaseLeaderboard(scope: string) {
   if (difficulties.has(scope as Difficulty)) params.set("difficulty", `eq.${scope}`);
 
   const res = await fetch(`${supabaseUrl}/rest/v1/leaderboard_scores?${params.toString()}`, {
-    headers: {
-      apikey: supabaseServiceRoleKey!,
-      Authorization: `Bearer ${supabaseServiceRoleKey}`,
-    },
+    headers: supabaseHeaders(),
   });
   if (!res.ok) throw new Error(`Supabase leaderboard fetch failed: ${res.status}`);
   const rows = (await res.json()) as Array<Record<string, unknown>>;
@@ -200,12 +208,10 @@ async function postSupabaseLeaderboardEntry(payload: Record<string, unknown>) {
   if (!hasSupabaseConfig()) return null;
   const res = await fetch(`${supabaseUrl}/rest/v1/leaderboard_scores`, {
     method: "POST",
-    headers: {
-      apikey: supabaseServiceRoleKey!,
-      Authorization: `Bearer ${supabaseServiceRoleKey}`,
+    headers: supabaseHeaders({
       "Content-Type": "application/json",
       Prefer: "return=representation",
-    },
+    }),
     body: JSON.stringify(payload),
   });
   if (!res.ok) {
