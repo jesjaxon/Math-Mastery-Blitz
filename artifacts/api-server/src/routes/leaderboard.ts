@@ -24,7 +24,10 @@ interface LeaderboardEntry {
 const router: IRouter = Router();
 const leaderboardFile = process.env["LEADERBOARD_FILE"] ?? path.join(process.cwd(), "leaderboard.json");
 const supabaseUrl = process.env["SUPABASE_URL"]?.replace(/\/$/, "");
-const supabaseServiceRoleKey = process.env["SUPABASE_SERVICE_ROLE_KEY"];
+const supabaseServiceRoleKey =
+  process.env["SUPABASE_SERVICE_ROLE_KEY"] ??
+  process.env["SUPABASE_SECRET_KEY"] ??
+  process.env["SUPABASE_KEY"];
 const difficulties = new Set<Difficulty>(["easy", "medium", "hard"]);
 const operations = new Set<Operation>(["add", "sub", "mul", "div"]);
 const boards = new Set<LeaderboardBoard>(["oneMinute", "day", "week", "month"]);
@@ -295,6 +298,13 @@ router.get("/leaderboard", async (req, res) => {
     req.log.error({ err: error }, "Failed to fetch leaderboard");
     res.status(500).json({ error: "Failed to fetch leaderboard" });
   }
+});
+
+router.get("/leaderboard/status", (_req, res) => {
+  res.json({
+    supabaseConfigured: hasSupabaseConfig(),
+    keyType: supabaseServiceRoleKey?.startsWith("sb_secret_") ? "secret" : supabaseServiceRoleKey ? "jwt" : "missing",
+  });
 });
 
 router.post("/leaderboard", async (req, res) => {
