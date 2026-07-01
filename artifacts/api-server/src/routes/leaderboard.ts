@@ -37,7 +37,13 @@ function toNumber(value: unknown, fallback = 0) {
 }
 
 function sortEntries(entries: LeaderboardEntry[]) {
-  return [...entries].sort((a, b) => {
+  const seen = new Set<string>();
+  const unique = entries.filter((entry) => {
+    if (seen.has(entry.id)) return false;
+    seen.add(entry.id);
+    return true;
+  });
+  return unique.sort((a, b) => {
     if (b.score !== a.score) return b.score - a.score;
     if (b.maxStreak !== a.maxStreak) return b.maxStreak - a.maxStreak;
     if (a.timeLimit !== b.timeLimit) return a.timeLimit - b.timeLimit;
@@ -77,8 +83,19 @@ function toDbEntry(entry: LeaderboardEntry) {
     max_streak: entry.maxStreak,
     points_earned: entry.pointsEarned,
     star_coins_earned: entry.starCoinsEarned,
-    submitted_at: entry.submittedAt,
+    submitted_at: new Date(entry.submittedAt).toISOString(),
   };
+}
+
+function toSubmittedAt(value: unknown) {
+  if (typeof value === "number") return Math.floor(value);
+  if (typeof value === "string") {
+    const numeric = Number(value);
+    if (Number.isFinite(numeric)) return Math.floor(numeric);
+    const parsed = Date.parse(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return Date.now();
 }
 
 function fromDbEntry(row: Record<string, unknown>): LeaderboardEntry {
@@ -94,7 +111,7 @@ function fromDbEntry(row: Record<string, unknown>): LeaderboardEntry {
     maxStreak: Math.floor(toNumber(row["max_streak"])),
     pointsEarned: toNumber(row["points_earned"]),
     starCoinsEarned: toNumber(row["star_coins_earned"]),
-    submittedAt: Math.floor(toNumber(row["submitted_at"], Date.now())),
+    submittedAt: toSubmittedAt(row["submitted_at"]),
   };
 }
 
@@ -130,9 +147,19 @@ async function saveSupabaseLeaderboardEntry(entry: LeaderboardEntry) {
     },
     body: JSON.stringify(toDbEntry(entry)),
   });
-  if (!res.ok) throw new Error(`Supabase leaderboard save failed: ${res.status}`);
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(`Supabase leaderboard save failed: ${res.status} ${body}`);
+  }
   const rows = (await res.json()) as Array<Record<string, unknown>>;
   return rows[0] ? fromDbEntry(rows[0]) : entry;
+}
+
+async function saveFallbackEntry(entry: LeaderboardEntry) {
+  const entries = await readEntries();
+  const next = sortEntries([entry, ...entries]).slice(0, 1000);
+  await writeEntries(next);
+  return entry;
 }
 
 function normalizeEntry(body: Record<string, unknown>): LeaderboardEntry | null {
@@ -165,7 +192,12 @@ router.get("/leaderboard", async (req, res) => {
   try {
     const supabaseEntries = await fetchSupabaseLeaderboard(scope);
     if (supabaseEntries) {
-      res.json({ entries: supabaseEntries });
+      const localEntries = await readEntries();
+      const allEntries = [...supabaseEntries, ...localEntries];
+      const filtered = difficulties.has(scope as Difficulty)
+        ? allEntries.filter((entry) => entry.difficulty === scope)
+        : allEntries;
+      res.json({ entries: sortEntries(filtered).slice(0, 100) });
       return;
     }
     const entries = await readEntries();
@@ -187,15 +219,17 @@ router.post("/leaderboard", async (req, res) => {
   }
 
   try {
-    const supabaseEntry = await saveSupabaseLeaderboardEntry(entry);
-    if (supabaseEntry) {
-      res.status(201).json(supabaseEntry);
-      return;
+    try {
+      const supabaseEntry = await saveSupabaseLeaderboardEntry(entry);
+      if (supabaseEntry) {
+        res.status(201).json(supabaseEntry);
+        return;
+      }
+    } catch (error) {
+      req.log.error({ err: error }, "Supabase save failed; using leaderboard fallback file");
     }
-    const entries = await readEntries();
-    const next = sortEntries([entry, ...entries]).slice(0, 1000);
-    await writeEntries(next);
-    res.status(201).json(entry);
+    const fallbackEntry = await saveFallbackEntry(entry);
+    res.status(201).json(fallbackEntry);
   } catch (error) {
     req.log.error({ err: error }, "Failed to save leaderboard score");
     res.status(500).json({ error: "Failed to save leaderboard score" });
