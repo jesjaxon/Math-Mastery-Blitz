@@ -6,6 +6,7 @@ const LOCAL_LEADERBOARD_KEY = "@mathdrills_leaderboard_v1";
 const apiBaseUrl = (process.env.EXPO_PUBLIC_LEADERBOARD_URL ?? "").replace(/\/$/, "");
 
 export type LeaderboardScope = "all" | Difficulty;
+export type LeaderboardBoard = "oneMinute" | "day" | "week" | "month";
 
 export interface LeaderboardEntry {
   id: string;
@@ -52,9 +53,53 @@ function sortEntries(entries: LeaderboardEntry[]) {
   });
 }
 
-function scopeEntries(entries: LeaderboardEntry[], scope: LeaderboardScope) {
+function boardStart(board: LeaderboardBoard) {
+  const now = new Date();
+  if (board === "day") return new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  if (board === "week") {
+    const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    start.setDate(start.getDate() - start.getDay());
+    return start.getTime();
+  }
+  if (board === "month") return new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+  return 0;
+}
+
+function aggregateEntries(entries: LeaderboardEntry[], board: LeaderboardBoard) {
+  if (board === "oneMinute") {
+    return sortEntries(entries.filter((entry) => entry.timeLimit === 60)).slice(0, 100);
+  }
+
+  const start = boardStart(board);
+  const totals = new Map<string, LeaderboardEntry>();
+
+  entries
+    .filter((entry) => entry.submittedAt >= start)
+    .forEach((entry) => {
+      const key = `${entry.playerId}:${entry.difficulty}`;
+      const current = totals.get(key);
+      if (!current) {
+        totals.set(key, { ...entry });
+        return;
+      }
+      totals.set(key, {
+        ...current,
+        id: `${board}_${key}`,
+        score: current.score + entry.score,
+        maxStreak: Math.max(current.maxStreak, entry.maxStreak),
+        pointsEarned: current.pointsEarned + entry.pointsEarned,
+        starCoinsEarned: current.starCoinsEarned + entry.starCoinsEarned,
+        operations: Array.from(new Set([...current.operations, ...entry.operations])),
+        submittedAt: Math.max(current.submittedAt, entry.submittedAt),
+      });
+    });
+
+  return sortEntries(Array.from(totals.values())).slice(0, 100);
+}
+
+function scopeEntries(entries: LeaderboardEntry[], scope: LeaderboardScope, board: LeaderboardBoard) {
   const scoped = scope === "all" ? entries : entries.filter((entry) => entry.difficulty === scope);
-  return sortEntries(scoped).slice(0, 100);
+  return aggregateEntries(scoped, board);
 }
 
 async function readLocalEntries() {
@@ -111,10 +156,11 @@ export async function submitLeaderboardScore(input: LeaderboardSubmitInput) {
   }
 }
 
-export async function fetchLeaderboard(scope: LeaderboardScope = "all") {
+export async function fetchLeaderboard(scope: LeaderboardScope = "all", board: LeaderboardBoard = "oneMinute") {
   if (isOnlineLeaderboardConfigured()) {
     try {
-      const res = await fetch(`${apiBaseUrl}/api/leaderboard?scope=${encodeURIComponent(scope)}`);
+      const params = new URLSearchParams({ scope, board });
+      const res = await fetch(`${apiBaseUrl}/api/leaderboard?${params.toString()}`);
       if (!res.ok) throw new Error(`Leaderboard fetch failed: ${res.status}`);
       const data = (await res.json()) as { entries?: LeaderboardEntry[] };
       return { entries: sortEntries(data.entries ?? []), online: true };
@@ -124,7 +170,7 @@ export async function fetchLeaderboard(scope: LeaderboardScope = "all") {
   }
 
   const local = await readLocalEntries();
-  return { entries: scopeEntries(local, scope), online: false };
+  return { entries: scopeEntries(local, scope, board), online: false };
 }
 
 export function formatOperations(operations: Operation[]) {

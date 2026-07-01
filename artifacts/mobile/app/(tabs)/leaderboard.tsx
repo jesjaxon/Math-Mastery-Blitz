@@ -20,9 +20,17 @@ import { useColors } from "@/hooks/useColors";
 import {
   fetchLeaderboard,
   formatOperations,
+  type LeaderboardBoard,
   type LeaderboardEntry,
   type LeaderboardScope,
 } from "@/utils/leaderboard";
+
+const BOARDS: Array<{ id: LeaderboardBoard; label: string; title: string; unit: string }> = [
+  { id: "oneMinute", label: "1 min", title: "Best 1-Minute Scores", unit: "correct" },
+  { id: "day", label: "Today", title: "Most Answered Today", unit: "today" },
+  { id: "week", label: "Week", title: "Most Answered This Week", unit: "week" },
+  { id: "month", label: "Month", title: "Most Answered This Month", unit: "month" },
+];
 
 const FILTERS: Array<{ id: LeaderboardScope; label: string }> = [
   { id: "all", label: "All" },
@@ -44,18 +52,21 @@ export default function LeaderboardScreen() {
   const insets = useSafeAreaInsets();
   const headerHeight = usePinnedHeaderHeight();
   const bottomPad = Platform.OS === "web" ? 34 : insets.bottom;
+  const [board, setBoard] = useState<LeaderboardBoard>("oneMinute");
   const [scope, setScope] = useState<LeaderboardScope>("all");
   const [entries, setEntries] = useState<LeaderboardEntry[]>([]);
   const [online, setOnline] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
+  const boardInfo = BOARDS.find((item) => item.id === board) ?? BOARDS[0];
+
   const load = useCallback(async () => {
     setRefreshing(true);
-    const result = await fetchLeaderboard(scope);
+    const result = await fetchLeaderboard(scope, board);
     setEntries(result.entries);
     setOnline(result.online);
     setRefreshing(false);
-  }, [scope]);
+  }, [board, scope]);
 
   useEffect(() => {
     load();
@@ -83,12 +94,36 @@ export default function LeaderboardScreen() {
             <Feather name="award" size={32} color={online ? "#00D9A3" : colors.gold} />
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={[styles.heroTitle, { color: colors.foreground }]}>Class Champions</Text>
+            <Text style={[styles.heroTitle, { color: colors.foreground }]}>{boardInfo.title}</Text>
             <Text style={[styles.heroSub, { color: colors.mutedForeground }]}>
               {online ? "Online scores are live" : "Local scores saved on this device"}
             </Text>
           </View>
         </View>
+
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.boardFilters}>
+          {BOARDS.map((item) => {
+            const selected = item.id === board;
+            return (
+              <TouchableOpacity
+                key={item.id}
+                style={[
+                  styles.boardBtn,
+                  {
+                    backgroundColor: selected ? "#00D9A322" : colors.card,
+                    borderColor: selected ? "#00D9A3" : colors.border,
+                  },
+                ]}
+                onPress={() => setBoard(item.id)}
+                activeOpacity={0.84}
+              >
+                <Text style={[styles.boardText, { color: selected ? "#00D9A3" : colors.mutedForeground }]}>
+                  {item.label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
 
         <View style={styles.filters}>
           {FILTERS.map((filter) => {
@@ -141,7 +176,7 @@ export default function LeaderboardScreen() {
                     {entry.score}
                   </Text>
                   <Text style={[styles.podiumMeta, { color: colors.mutedForeground }]} numberOfLines={1}>
-                    {difficultyLabel(entry.difficulty)}
+                    {difficultyLabel(entry.difficulty)} · {boardInfo.unit}
                   </Text>
                 </TouchableOpacity>
               );
@@ -212,6 +247,17 @@ const styles = StyleSheet.create({
   },
   heroTitle: { fontSize: 27, fontFamily: "Inter_700Bold" },
   heroSub: { fontSize: 14, fontFamily: "Inter_600SemiBold", marginTop: 2 },
+  boardFilters: { gap: 8, paddingRight: 4 },
+  boardBtn: {
+    minWidth: 88,
+    minHeight: 42,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 14,
+  },
+  boardText: { fontSize: 13, fontFamily: "Inter_700Bold" },
   filters: { flexDirection: "row", gap: 8 },
   filterBtn: {
     flex: 1,

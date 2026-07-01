@@ -4,6 +4,7 @@ import { Router, type IRouter } from "express";
 
 type Difficulty = "easy" | "medium" | "hard";
 type Operation = "add" | "sub" | "mul" | "div";
+type LeaderboardBoard = "oneMinute" | "day" | "week" | "month";
 
 interface LeaderboardEntry {
   id: string;
@@ -26,6 +27,7 @@ const supabaseUrl = process.env["SUPABASE_URL"]?.replace(/\/$/, "");
 const supabaseServiceRoleKey = process.env["SUPABASE_SERVICE_ROLE_KEY"];
 const difficulties = new Set<Difficulty>(["easy", "medium", "hard"]);
 const operations = new Set<Operation>(["add", "sub", "mul", "div"]);
+const boards = new Set<LeaderboardBoard>(["oneMinute", "day", "week", "month"]);
 
 function cleanName(name: unknown) {
   return String(name ?? "Player").trim().slice(0, 24) || "Player";
@@ -50,6 +52,48 @@ function sortEntries(entries: LeaderboardEntry[]) {
     if (a.timeLimit !== b.timeLimit) return a.timeLimit - b.timeLimit;
     return b.submittedAt - a.submittedAt;
   });
+}
+
+function boardStart(board: LeaderboardBoard) {
+  const now = new Date();
+  if (board === "day") return new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  if (board === "week") {
+    const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    start.setDate(start.getDate() - start.getDay());
+    return start.getTime();
+  }
+  if (board === "month") return new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+  return 0;
+}
+
+function aggregateEntries(entries: LeaderboardEntry[], board: LeaderboardBoard) {
+  if (board === "oneMinute") {
+    return sortEntries(entries.filter((entry) => entry.timeLimit === 60)).slice(0, 100);
+  }
+
+  const start = boardStart(board);
+  const totals = new Map<string, LeaderboardEntry>();
+  entries
+    .filter((entry) => entry.submittedAt >= start)
+    .forEach((entry) => {
+      const key = `${entry.playerId}:${entry.difficulty}`;
+      const current = totals.get(key);
+      if (!current) {
+        totals.set(key, { ...entry, id: `${board}_${key}` });
+        return;
+      }
+      totals.set(key, {
+        ...current,
+        score: current.score + entry.score,
+        maxStreak: Math.max(current.maxStreak, entry.maxStreak),
+        pointsEarned: current.pointsEarned + entry.pointsEarned,
+        starCoinsEarned: current.starCoinsEarned + entry.starCoinsEarned,
+        operations: Array.from(new Set([...current.operations, ...entry.operations])),
+        submittedAt: Math.max(current.submittedAt, entry.submittedAt),
+      });
+    });
+
+  return sortEntries(Array.from(totals.values())).slice(0, 100);
 }
 
 async function readEntries() {
@@ -121,7 +165,7 @@ async function fetchSupabaseLeaderboard(scope: string) {
   const params = new URLSearchParams({
     select: "*",
     order: "score.desc,max_streak.desc,time_limit.asc,submitted_at.desc",
-    limit: "100",
+    limit: "1000",
   });
   if (difficulties.has(scope as Difficulty)) params.set("difficulty", `eq.${scope}`);
 
@@ -190,6 +234,8 @@ function normalizeEntry(body: Record<string, unknown>): LeaderboardEntry | null 
 
 router.get("/leaderboard", async (req, res) => {
   const scope = String(req.query["scope"] ?? "all");
+  const rawBoard = String(req.query["board"] ?? "oneMinute");
+  const board = boards.has(rawBoard as LeaderboardBoard) ? (rawBoard as LeaderboardBoard) : "oneMinute";
   try {
     const supabaseEntries = await fetchSupabaseLeaderboard(scope);
     if (supabaseEntries) {
@@ -198,14 +244,14 @@ router.get("/leaderboard", async (req, res) => {
       const filtered = difficulties.has(scope as Difficulty)
         ? allEntries.filter((entry) => entry.difficulty === scope)
         : allEntries;
-      res.json({ entries: sortEntries(filtered).slice(0, 100) });
+      res.json({ entries: aggregateEntries(filtered, board) });
       return;
     }
     const entries = await readEntries();
     const filtered = difficulties.has(scope as Difficulty)
       ? entries.filter((entry) => entry.difficulty === scope)
       : entries;
-    res.json({ entries: sortEntries(filtered).slice(0, 100) });
+    res.json({ entries: aggregateEntries(filtered, board) });
   } catch (error) {
     req.log.error({ err: error }, "Failed to fetch leaderboard");
     res.status(500).json({ error: "Failed to fetch leaderboard" });
