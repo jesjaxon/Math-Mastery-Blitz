@@ -313,9 +313,9 @@ const styles = StyleSheet.create({
   heroTrophy: { width: 56, height: 56 },
   heroTitle: { fontSize: 27, fontFamily: "Inter_700Bold" },
   heroSub: { fontSize: 14, fontFamily: "Inter_600SemiBold", marginTop: 2 },
-  boardFilters: { gap: 8, paddingRight: 4 },
+  boardFilters: { gap: 8, paddingRight: 28 },
   boardBtn: {
-    minWidth: 88,
+    width: 88,
     height: 44,
     borderRadius: 14,
     overflow: "hidden",
