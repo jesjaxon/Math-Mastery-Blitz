@@ -2,6 +2,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import type { Difficulty, Operation } from "@/constants/achievements";
 
 const LOCAL_LEADERBOARD_KEY = "@mathdrills_leaderboard_v1";
+const MAX_LOCAL_LEADERBOARD_ENTRIES = 5000;
 
 const apiBaseUrl = (process.env.EXPO_PUBLIC_LEADERBOARD_URL ?? "").replace(/\/$/, "");
 
@@ -124,7 +125,9 @@ async function readLocalEntries() {
 
 async function saveLocalEntry(entry: LeaderboardEntry) {
   const entries = await readLocalEntries();
-  const next = sortEntries([entry, ...entries]).slice(0, 200);
+  const next = [entry, ...entries]
+    .sort((a, b) => b.submittedAt - a.submittedAt)
+    .slice(0, MAX_LOCAL_LEADERBOARD_ENTRIES);
   await AsyncStorage.setItem(LOCAL_LEADERBOARD_KEY, JSON.stringify(next));
   return next;
 }

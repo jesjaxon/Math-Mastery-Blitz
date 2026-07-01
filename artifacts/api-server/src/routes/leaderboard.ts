@@ -141,6 +141,13 @@ function toDbEntry(entry: LeaderboardEntry) {
   };
 }
 
+function toNumericTimestampDbEntry(entry: LeaderboardEntry) {
+  return {
+    ...toDbEntry(entry),
+    submitted_at: entry.submittedAt,
+  };
+}
+
 function toSubmittedAt(value: unknown) {
   if (typeof value === "number") return Math.floor(value);
   if (typeof value === "string") {
@@ -189,7 +196,7 @@ async function fetchSupabaseLeaderboard(scope: string) {
   return rows.map(fromDbEntry);
 }
 
-async function saveSupabaseLeaderboardEntry(entry: LeaderboardEntry) {
+async function postSupabaseLeaderboardEntry(payload: Record<string, unknown>) {
   if (!hasSupabaseConfig()) return null;
   const res = await fetch(`${supabaseUrl}/rest/v1/leaderboard_scores`, {
     method: "POST",
@@ -199,14 +206,31 @@ async function saveSupabaseLeaderboardEntry(entry: LeaderboardEntry) {
       "Content-Type": "application/json",
       Prefer: "return=representation",
     },
-    body: JSON.stringify(toDbEntry(entry)),
+    body: JSON.stringify(payload),
   });
   if (!res.ok) {
     const body = await res.text().catch(() => "");
     throw new Error(`Supabase leaderboard save failed: ${res.status} ${body}`);
   }
   const rows = (await res.json()) as Array<Record<string, unknown>>;
-  return rows[0] ? fromDbEntry(rows[0]) : entry;
+  return rows[0] ? fromDbEntry(rows[0]) : null;
+}
+
+async function saveSupabaseLeaderboardEntry(entry: LeaderboardEntry) {
+  if (!hasSupabaseConfig()) return null;
+  try {
+    return (await postSupabaseLeaderboardEntry(toDbEntry(entry))) ?? entry;
+  } catch (isoError) {
+    try {
+      return (await postSupabaseLeaderboardEntry(toNumericTimestampDbEntry(entry))) ?? entry;
+    } catch (numericError) {
+      throw new Error(
+        `Supabase leaderboard save failed with ISO and numeric timestamps. ISO: ${
+          isoError instanceof Error ? isoError.message : String(isoError)
+        } Numeric: ${numericError instanceof Error ? numericError.message : String(numericError)}`
+      );
+    }
+  }
 }
 
 async function saveFallbackEntry(entry: LeaderboardEntry) {
