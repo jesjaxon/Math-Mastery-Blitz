@@ -1,6 +1,6 @@
 import { Feather } from "@expo/vector-icons";
 import { router } from "expo-router";
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   Animated,
   Image,
@@ -25,7 +25,12 @@ import type { Operation } from "@/constants/achievements";
 import { PinnedHeader, usePinnedHeaderHeight } from "@/components/PinnedHeader";
 import { XpBar } from "@/components/XpBar";
 import { useProfiles } from "@/context/ProfileContext";
-import { submitLeaderboardScore } from "@/utils/leaderboard";
+import {
+  fetchLeaderboard,
+  submitLeaderboardScore,
+  type LeaderboardBoard,
+  type LeaderboardEntry,
+} from "@/utils/leaderboard";
 
 const OP_COLORS: Record<Operation, string> = {
   add: "#7C6FFF",
@@ -53,6 +58,29 @@ const formatReward = (value: number) =>
         maximumFractionDigits: 2,
       });
 
+type LeaderboardUpdate = {
+  board: LeaderboardBoard;
+  rank: number | null;
+  previousRank: number | null;
+  entries: LeaderboardEntry[];
+  online: boolean;
+};
+
+function boardLabel(board: LeaderboardBoard) {
+  if (board === "oneMinute") return "1 min";
+  if (board === "week") return "Week";
+  if (board === "month") return "Month";
+  return "Today";
+}
+
+function rankChangeText(update: LeaderboardUpdate | null) {
+  if (!update?.rank) return "Standing not available yet";
+  if (!update.previousRank) return `Entered at #${update.rank}`;
+  if (update.previousRank === update.rank) return `Held #${update.rank}`;
+  if (update.previousRank > update.rank) return `Up ${update.previousRank - update.rank} to #${update.rank}`;
+  return `Down ${update.rank - update.previousRank} to #${update.rank}`;
+}
+
 export default function ResultsScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
@@ -67,6 +95,9 @@ export default function ResultsScreen() {
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const pointsAnim = useRef(new Animated.Value(0)).current;
   const submittedScoreKey = useRef<string | null>(null);
+  const [leaderboardOpen, setLeaderboardOpen] = useState(true);
+  const [leaderboardUpdate, setLeaderboardUpdate] = useState<LeaderboardUpdate | null>(null);
+  const [leaderboardLoading, setLeaderboardLoading] = useState(false);
 
   useEffect(() => {
     Animated.parallel([
@@ -98,18 +129,39 @@ export default function ResultsScreen() {
     const key = `${activeProfile.id}:${lastSession.totalGames}:${lastSession.score}:${lastSession.difficulty}`;
     if (submittedScoreKey.current === key) return;
     submittedScoreKey.current = key;
-    submitLeaderboardScore({
-      playerId: activeProfile.id,
-      playerName: activeProfile.name,
-      avatar: activeProfile.avatar,
-      score: lastSession.score,
-      difficulty: lastSession.difficulty,
-      operations: lastSession.operations,
-      timeLimit: lastSession.timeLimit,
-      maxStreak: lastSession.maxStreak,
-      pointsEarned: lastSession.pointsEarned,
-      starCoinsEarned: lastSession.starCoinsEarned,
-    }).catch(() => {});
+    const session = lastSession;
+    const profile = activeProfile;
+    const board: LeaderboardBoard = session.timeLimit === 60 ? "oneMinute" : "day";
+    const difficulty = session.difficulty;
+
+    async function updateLeaderboardStanding() {
+      setLeaderboardLoading(true);
+      const before = await fetchLeaderboard(difficulty, board);
+      const previousRank = before.entries.findIndex((entry) => entry.playerId === profile.id) + 1 || null;
+      await submitLeaderboardScore({
+        playerId: profile.id,
+        playerName: profile.name,
+        avatar: profile.avatar,
+        score: session.score,
+        difficulty: session.difficulty,
+        operations: session.operations,
+        timeLimit: session.timeLimit,
+        maxStreak: session.maxStreak,
+        pointsEarned: session.pointsEarned,
+        starCoinsEarned: session.starCoinsEarned,
+      });
+      const after = await fetchLeaderboard(difficulty, board);
+      const rankIndex = after.entries.findIndex((entry) => entry.playerId === profile.id);
+      const rank = rankIndex >= 0 ? rankIndex + 1 : null;
+      const nearbyStart = Math.max(0, rankIndex - 1);
+      const entries = rankIndex >= 0 ? after.entries.slice(nearbyStart, nearbyStart + 3) : after.entries.slice(0, 3);
+      setLeaderboardUpdate({ board, rank, previousRank, entries, online: after.online });
+      setLeaderboardLoading(false);
+    }
+
+    updateLeaderboardStanding().catch(() => {
+      setLeaderboardLoading(false);
+    });
   }, [activeProfile, lastSession]);
 
   if (!lastSession) {
@@ -167,6 +219,8 @@ export default function ResultsScreen() {
     outputRange: [0.5, 1],
   });
 
+  const leaderboardStatus = useMemo(() => rankChangeText(leaderboardUpdate), [leaderboardUpdate]);
+
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
       <PinnedHeader title="Results" />
@@ -207,6 +261,59 @@ export default function ResultsScreen() {
               </Text>
             </View>
           )}
+
+          <View style={[styles.leaderboardCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <TouchableOpacity
+              style={styles.leaderboardHead}
+              onPress={() => setLeaderboardOpen((open) => !open)}
+              activeOpacity={0.82}
+            >
+              <View style={styles.leaderboardIcon}>
+                <Feather name="bar-chart-2" size={22} color="#00D9A3" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.leaderboardTitle, { color: colors.foreground }]}>Leaderboard Update</Text>
+                <Text style={[styles.leaderboardSub, { color: colors.mutedForeground }]}>
+                  {leaderboardLoading
+                    ? "Updating standings..."
+                    : `${boardLabel(leaderboardUpdate?.board ?? (lastSession.timeLimit === 60 ? "oneMinute" : "day"))} · ${leaderboardStatus}`}
+                </Text>
+              </View>
+              <Feather name={leaderboardOpen ? "chevron-up" : "chevron-down"} size={22} color={colors.mutedForeground} />
+            </TouchableOpacity>
+            {leaderboardOpen && (
+              <View style={styles.leaderboardBody}>
+                {leaderboardUpdate?.entries.length ? (
+                  leaderboardUpdate.entries.map((entry) => {
+                    const rank = leaderboardUpdate.entries.indexOf(entry) + Math.max(1, (leaderboardUpdate.rank ?? 1) - 1);
+                    const isPlayer = entry.playerId === activeProfile?.id;
+                    return (
+                      <View
+                        key={entry.id}
+                        style={[
+                          styles.leaderboardRow,
+                          { backgroundColor: isPlayer ? "#00D9A322" : "rgba(255,255,255,0.04)" },
+                        ]}
+                      >
+                        <Text style={[styles.leaderboardRank, { color: isPlayer ? "#00D9A3" : colors.primary }]}>#{rank}</Text>
+                        <Text style={[styles.leaderboardName, { color: colors.foreground }]} numberOfLines={1}>
+                          {entry.playerName}
+                        </Text>
+                        <Text style={[styles.leaderboardScore, { color: colors.gold }]}>{entry.score}</Text>
+                      </View>
+                    );
+                  })
+                ) : (
+                  <Text style={[styles.leaderboardEmpty, { color: colors.mutedForeground }]}>
+                    Finish is saving. Open Leaderboard to refresh full standings.
+                  </Text>
+                )}
+                <Text style={[styles.leaderboardMode, { color: colors.mutedForeground }]}>
+                  {leaderboardUpdate?.online ? "Online standings" : "Local standings"}
+                </Text>
+              </View>
+            )}
+          </View>
 
           {/* Level Up banner */}
           {didLevelUp && (
@@ -539,6 +646,48 @@ const styles = StyleSheet.create({
   },
   badgeAsset: { width: 24, height: 24 },
   pbText: { fontSize: 15, fontFamily: "Inter_600SemiBold" },
+  leaderboardCard: {
+    width: "100%",
+    borderRadius: 18,
+    borderWidth: 1.5,
+    overflow: "hidden",
+  },
+  leaderboardHead: {
+    minHeight: 74,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  leaderboardIcon: {
+    width: 46,
+    height: 46,
+    borderRadius: 14,
+    backgroundColor: "rgba(0,217,163,0.12)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  leaderboardTitle: { fontSize: 17, fontFamily: "Inter_700Bold" },
+  leaderboardSub: { marginTop: 2, fontSize: 12, fontFamily: "Inter_600SemiBold" },
+  leaderboardBody: {
+    paddingHorizontal: 14,
+    paddingBottom: 14,
+    gap: 8,
+  },
+  leaderboardRow: {
+    minHeight: 44,
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  leaderboardRank: { width: 38, fontSize: 14, fontFamily: "Inter_700Bold" },
+  leaderboardName: { flex: 1, fontSize: 14, fontFamily: "Inter_700Bold" },
+  leaderboardScore: { fontSize: 16, fontFamily: "Inter_700Bold" },
+  leaderboardEmpty: { fontSize: 12, fontFamily: "Inter_600SemiBold", textAlign: "center", paddingVertical: 8 },
+  leaderboardMode: { fontSize: 11, fontFamily: "Inter_600SemiBold", textAlign: "right" },
   levelUpBanner: {
     flexDirection: "row",
     alignItems: "center",
