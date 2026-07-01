@@ -39,6 +39,7 @@ function toNumber(value: unknown, fallback = 0) {
 function sortEntries(entries: LeaderboardEntry[]) {
   const seen = new Set<string>();
   const unique = entries.filter((entry) => {
+    if (entry.id.startsWith("codex_probe_") || entry.playerId === "codex") return false;
     if (seen.has(entry.id)) return false;
     seen.add(entry.id);
     return true;
