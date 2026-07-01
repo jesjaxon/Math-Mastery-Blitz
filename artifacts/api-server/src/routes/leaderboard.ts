@@ -68,7 +68,16 @@ function boardStart(board: LeaderboardBoard) {
 
 function aggregateEntries(entries: LeaderboardEntry[], board: LeaderboardBoard) {
   if (board === "oneMinute") {
-    return sortEntries(entries.filter((entry) => entry.timeLimit === 60)).slice(0, 100);
+    const bestByPlayer = new Map<string, LeaderboardEntry>();
+    entries
+      .filter((entry) => entry.timeLimit === 60)
+      .forEach((entry) => {
+        const current = bestByPlayer.get(entry.playerId);
+        if (!current || sortEntries([entry, current])[0].id === entry.id) {
+          bestByPlayer.set(entry.playerId, entry);
+        }
+      });
+    return sortEntries(Array.from(bestByPlayer.values())).slice(0, 100);
   }
 
   const start = boardStart(board);
@@ -76,7 +85,7 @@ function aggregateEntries(entries: LeaderboardEntry[], board: LeaderboardBoard) 
   entries
     .filter((entry) => entry.submittedAt >= start)
     .forEach((entry) => {
-      const key = `${entry.playerId}:${entry.difficulty}`;
+      const key = entry.playerId;
       const current = totals.get(key);
       if (!current) {
         totals.set(key, { ...entry, id: `${board}_${key}` });

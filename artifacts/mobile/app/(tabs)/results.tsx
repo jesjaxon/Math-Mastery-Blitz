@@ -58,7 +58,7 @@ const formatReward = (value: number) =>
         maximumFractionDigits: 2,
       });
 
-type LeaderboardUpdate = {
+type LeaderboardStanding = {
   board: LeaderboardBoard;
   rank: number | null;
   previousRank: number | null;
@@ -73,7 +73,7 @@ function boardLabel(board: LeaderboardBoard) {
   return "Today";
 }
 
-function rankChangeText(update: LeaderboardUpdate | null) {
+function rankChangeText(update: LeaderboardStanding | null) {
   if (!update?.rank) return "Standing not available yet";
   if (!update.previousRank) return `Entered at #${update.rank}`;
   if (update.previousRank === update.rank) return `Held #${update.rank}`;
@@ -96,7 +96,7 @@ export default function ResultsScreen() {
   const pointsAnim = useRef(new Animated.Value(0)).current;
   const submittedScoreKey = useRef<string | null>(null);
   const [leaderboardOpen, setLeaderboardOpen] = useState(true);
-  const [leaderboardUpdate, setLeaderboardUpdate] = useState<LeaderboardUpdate | null>(null);
+  const [leaderboardStandings, setLeaderboardStandings] = useState<LeaderboardStanding[]>([]);
   const [leaderboardLoading, setLeaderboardLoading] = useState(false);
 
   useEffect(() => {
@@ -131,13 +131,17 @@ export default function ResultsScreen() {
     submittedScoreKey.current = key;
     const session = lastSession;
     const profile = activeProfile;
-    const board: LeaderboardBoard = session.timeLimit === 60 ? "oneMinute" : "day";
+    const boards: LeaderboardBoard[] = session.timeLimit === 60
+      ? ["oneMinute", "day", "week", "month"]
+      : ["day", "week", "month"];
     const difficulty = session.difficulty;
 
     async function updateLeaderboardStanding() {
       setLeaderboardLoading(true);
-      const before = await fetchLeaderboard(difficulty, board);
-      const previousRank = before.entries.findIndex((entry) => entry.playerId === profile.id) + 1 || null;
+      const beforeBoards = await Promise.all(boards.map(async (board) => ({
+        board,
+        result: await fetchLeaderboard(difficulty, board),
+      })));
       await submitLeaderboardScore({
         playerId: profile.id,
         playerName: profile.name,
@@ -150,12 +154,17 @@ export default function ResultsScreen() {
         pointsEarned: session.pointsEarned,
         starCoinsEarned: session.starCoinsEarned,
       });
-      const after = await fetchLeaderboard(difficulty, board);
-      const rankIndex = after.entries.findIndex((entry) => entry.playerId === profile.id);
-      const rank = rankIndex >= 0 ? rankIndex + 1 : null;
-      const nearbyStart = Math.max(0, rankIndex - 1);
-      const entries = rankIndex >= 0 ? after.entries.slice(nearbyStart, nearbyStart + 3) : after.entries.slice(0, 3);
-      setLeaderboardUpdate({ board, rank, previousRank, entries, online: after.online });
+      const standings = await Promise.all(boards.map(async (board) => {
+        const before = beforeBoards.find((item) => item.board === board)?.result.entries ?? [];
+        const previousRank = before.findIndex((entry) => entry.playerId === profile.id) + 1 || null;
+        const after = await fetchLeaderboard(difficulty, board);
+        const rankIndex = after.entries.findIndex((entry) => entry.playerId === profile.id);
+        const rank = rankIndex >= 0 ? rankIndex + 1 : null;
+        const nearbyStart = Math.max(0, rankIndex - 1);
+        const entries = rankIndex >= 0 ? after.entries.slice(nearbyStart, nearbyStart + 3) : after.entries.slice(0, 3);
+        return { board, rank, previousRank, entries, online: after.online };
+      }));
+      setLeaderboardStandings(standings);
       setLeaderboardLoading(false);
     }
 
@@ -219,7 +228,10 @@ export default function ResultsScreen() {
     outputRange: [0.5, 1],
   });
 
-  const leaderboardStatus = useMemo(() => rankChangeText(leaderboardUpdate), [leaderboardUpdate]);
+  const leaderboardStatus = useMemo(() => {
+    if (leaderboardStandings.length === 0) return "Standing not available yet";
+    return leaderboardStandings.map((standing) => `${boardLabel(standing.board)} ${rankChangeText(standing)}`).join(" · ");
+  }, [leaderboardStandings]);
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
@@ -276,30 +288,45 @@ export default function ResultsScreen() {
                 <Text style={[styles.leaderboardSub, { color: colors.mutedForeground }]}>
                   {leaderboardLoading
                     ? "Updating standings..."
-                    : `${boardLabel(leaderboardUpdate?.board ?? (lastSession.timeLimit === 60 ? "oneMinute" : "day"))} · ${leaderboardStatus}`}
+                    : leaderboardStatus}
                 </Text>
               </View>
               <Feather name={leaderboardOpen ? "chevron-up" : "chevron-down"} size={22} color={colors.mutedForeground} />
             </TouchableOpacity>
             {leaderboardOpen && (
               <View style={styles.leaderboardBody}>
-                {leaderboardUpdate?.entries.length ? (
-                  leaderboardUpdate.entries.map((entry) => {
-                    const rank = leaderboardUpdate.entries.indexOf(entry) + Math.max(1, (leaderboardUpdate.rank ?? 1) - 1);
-                    const isPlayer = entry.playerId === activeProfile?.id;
+                {leaderboardStandings.length ? (
+                  leaderboardStandings.map((standing) => {
+                    const baseRank = Math.max(1, (standing.rank ?? 1) - 1);
                     return (
-                      <View
-                        key={entry.id}
-                        style={[
-                          styles.leaderboardRow,
-                          { backgroundColor: isPlayer ? "#00D9A322" : "rgba(255,255,255,0.04)" },
-                        ]}
-                      >
-                        <Text style={[styles.leaderboardRank, { color: isPlayer ? "#00D9A3" : colors.primary }]}>#{rank}</Text>
-                        <Text style={[styles.leaderboardName, { color: colors.foreground }]} numberOfLines={1}>
-                          {entry.playerName}
-                        </Text>
-                        <Text style={[styles.leaderboardScore, { color: colors.gold }]}>{entry.score}</Text>
+                      <View key={standing.board} style={styles.leaderboardBoardBlock}>
+                        <View style={styles.leaderboardBoardHead}>
+                          <Text style={[styles.leaderboardBoardName, { color: colors.foreground }]}>
+                            {boardLabel(standing.board)}
+                          </Text>
+                          <Text style={[styles.leaderboardBoardMove, { color: "#00D9A3" }]}>
+                            {rankChangeText(standing)}
+                          </Text>
+                        </View>
+                        {standing.entries.map((entry, index) => {
+                          const rank = baseRank + index;
+                          const isPlayer = entry.playerId === activeProfile?.id;
+                          return (
+                            <View
+                              key={`${standing.board}:${entry.id}`}
+                              style={[
+                                styles.leaderboardRow,
+                                { backgroundColor: isPlayer ? "#00D9A322" : "rgba(255,255,255,0.04)" },
+                              ]}
+                            >
+                              <Text style={[styles.leaderboardRank, { color: isPlayer ? "#00D9A3" : colors.primary }]}>#{rank}</Text>
+                              <Text style={[styles.leaderboardName, { color: colors.foreground }]} numberOfLines={1}>
+                                {entry.playerName}
+                              </Text>
+                              <Text style={[styles.leaderboardScore, { color: colors.gold }]}>{entry.score}</Text>
+                            </View>
+                          );
+                        })}
                       </View>
                     );
                   })
@@ -309,7 +336,7 @@ export default function ResultsScreen() {
                   </Text>
                 )}
                 <Text style={[styles.leaderboardMode, { color: colors.mutedForeground }]}>
-                  {leaderboardUpdate?.online ? "Online standings" : "Local standings"}
+                  {leaderboardStandings.some((standing) => standing.online) ? "Online standings" : "Local standings"}
                 </Text>
               </View>
             )}
@@ -675,6 +702,16 @@ const styles = StyleSheet.create({
     paddingBottom: 14,
     gap: 8,
   },
+  leaderboardBoardBlock: { gap: 6 },
+  leaderboardBoardHead: {
+    minHeight: 28,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+  },
+  leaderboardBoardName: { fontSize: 13, fontFamily: "Inter_700Bold" },
+  leaderboardBoardMove: { fontSize: 12, fontFamily: "Inter_700Bold", textAlign: "right", flexShrink: 0 },
   leaderboardRow: {
     minHeight: 44,
     borderRadius: 12,
