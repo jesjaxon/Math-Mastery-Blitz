@@ -13,9 +13,18 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import Svg, {
+  Defs,
+  LinearGradient as SvgLinearGradient,
+  Path,
+  Rect,
+  Stop,
+  Text as SvgText,
+} from "react-native-svg";
 import { PinnedHeader, usePinnedHeaderHeight } from "@/components/PinnedHeader";
 import type { Difficulty } from "@/constants/achievements";
 import { getProfileAvatarAsset } from "@/constants/profileAvatars";
+import { RESULT_ASSETS } from "@/constants/resultAssets";
 import { useColors } from "@/hooks/useColors";
 import {
   fetchLeaderboard,
@@ -45,6 +54,78 @@ function difficultyLabel(difficulty: Difficulty) {
 
 function scoreLine(entry: LeaderboardEntry) {
   return `${entry.playerName} scored ${entry.score} correct on ${difficultyLabel(entry.difficulty)} mode in 1 Minute Space Math!`;
+}
+
+function BevelButtonArt({
+  label,
+  selected,
+  variant,
+}: {
+  label: string;
+  selected: boolean;
+  variant: "small" | "wide";
+}) {
+  const width = variant === "wide" ? 510 : 322;
+  const height = 162;
+  const fillTop = selected ? "#A88EFF" : "#29264F";
+  const fillMid = selected ? "#7F5AFF" : "#211D42";
+  const fillBottom = selected ? "#6F4CFF" : "#171331";
+  const rim = selected ? "#7D63FF" : "#3B345F";
+  const glow = selected ? "#DCD3FF" : "#5A5087";
+  const textColor = selected ? "#FFFFFF" : "#A39CBD";
+  const fontSize = variant === "wide" ? 50 : label.length > 5 ? 46 : 50;
+  const rx = variant === "wide" ? 42 : 34;
+
+  return (
+    <Svg width="100%" height="100%" viewBox={`0 0 ${width} ${height}`}>
+      <Defs>
+        <SvgLinearGradient id={`leader-fill-${label}-${variant}`} x1="0" y1="0" x2="0" y2="1">
+          <Stop offset="0" stopColor={fillTop} />
+          <Stop offset="0.56" stopColor={fillMid} />
+          <Stop offset="1" stopColor={fillBottom} />
+        </SvgLinearGradient>
+        <SvgLinearGradient id={`leader-shine-${label}-${variant}`} x1="0" y1="0" x2="0" y2="1">
+          <Stop offset="0" stopColor="#FFFFFF" stopOpacity={selected ? 0.42 : 0.16} />
+          <Stop offset="0.24" stopColor="#FFFFFF" stopOpacity={selected ? 0.12 : 0.04} />
+          <Stop offset="1" stopColor="#000000" stopOpacity={selected ? 0.1 : 0.32} />
+        </SvgLinearGradient>
+      </Defs>
+      <Rect x="9" y="9" width={width - 18} height={height - 18} rx={rx} fill={rim} />
+      <Rect x="17" y="16" width={width - 34} height={height - 32} rx={rx - 8} fill={`url(#leader-fill-${label}-${variant})`} />
+      <Rect x="17" y="16" width={width - 34} height={height - 32} rx={rx - 8} fill={`url(#leader-shine-${label}-${variant})`} />
+      <Rect
+        x="24"
+        y="23"
+        width={width - 48}
+        height={height - 46}
+        rx={rx - 14}
+        fill="none"
+        stroke={glow}
+        strokeWidth={variant === "wide" ? 4 : 5}
+        opacity={selected ? 0.68 : 0.36}
+      />
+      <Path
+        d={`M42 34h${variant === "wide" ? 112 : 58}l19-18h${variant === "wide" ? 150 : 70}l19 18h${variant === "wide" ? 110 : 45}M42 ${height - 34}h${variant === "wide" ? 112 : 58}l19 18h${variant === "wide" ? 150 : 70}l19-18h${variant === "wide" ? 110 : 45}`}
+        fill="none"
+        stroke={glow}
+        strokeWidth={variant === "wide" ? 6 : 5}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        opacity={selected ? 0.78 : 0.45}
+      />
+      <SvgText
+        x={width / 2}
+        y={height / 2 + fontSize * 0.34}
+        fill={textColor}
+        fontSize={fontSize}
+        fontWeight="900"
+        textAnchor="middle"
+        letterSpacing="0"
+      >
+        {label}
+      </SvgText>
+    </Svg>
+  );
 }
 
 export default function LeaderboardScreen() {
@@ -91,7 +172,7 @@ export default function LeaderboardScreen() {
       >
         <View style={[styles.hero, { backgroundColor: "#11152E", borderColor: online ? "#00D9A366" : "#FFD16666" }]}>
           <View style={styles.heroIcon}>
-            <Feather name="award" size={32} color={online ? "#00D9A3" : colors.gold} />
+            <Image source={RESULT_ASSETS.trophy} style={styles.heroTrophy} resizeMode="contain" />
           </View>
           <View style={{ flex: 1 }}>
             <Text style={[styles.heroTitle, { color: colors.foreground }]}>{boardInfo.title}</Text>
@@ -107,19 +188,11 @@ export default function LeaderboardScreen() {
             return (
               <TouchableOpacity
                 key={item.id}
-                style={[
-                  styles.boardBtn,
-                  {
-                    backgroundColor: selected ? "#00D9A322" : colors.card,
-                    borderColor: selected ? "#00D9A3" : colors.border,
-                  },
-                ]}
+                style={styles.boardBtn}
                 onPress={() => setBoard(item.id)}
                 activeOpacity={0.84}
               >
-                <Text style={[styles.boardText, { color: selected ? "#00D9A3" : colors.mutedForeground }]}>
-                  {item.label}
-                </Text>
+                <BevelButtonArt label={item.label} selected={selected} variant="small" />
               </TouchableOpacity>
             );
           })}
@@ -131,19 +204,11 @@ export default function LeaderboardScreen() {
             return (
               <TouchableOpacity
                 key={filter.id}
-                style={[
-                  styles.filterBtn,
-                  {
-                    backgroundColor: selected ? colors.primary : colors.card,
-                    borderColor: selected ? colors.primary : colors.border,
-                  },
-                ]}
+                style={styles.filterBtn}
                 onPress={() => setScope(filter.id)}
                 activeOpacity={0.84}
               >
-                <Text style={[styles.filterText, { color: selected ? "#FFFFFF" : colors.mutedForeground }]}>
-                  {filter.label}
-                </Text>
+                <BevelButtonArt label={filter.label} selected={selected} variant="small" />
               </TouchableOpacity>
             );
           })}
@@ -215,8 +280,8 @@ export default function LeaderboardScreen() {
           <View style={[styles.empty, { backgroundColor: colors.card, borderColor: colors.border }]}>
             <Feather name="users" size={38} color={colors.primary} />
             <Text style={[styles.emptyTitle, { color: colors.foreground }]}>No scores yet</Text>
-            <TouchableOpacity style={[styles.startBtn, { backgroundColor: colors.primary }]} onPress={() => router.push("/setup")}>
-              <Text style={styles.startText}>Start Drill</Text>
+            <TouchableOpacity style={styles.startBtn} onPress={() => router.push("/setup")}>
+              <BevelButtonArt label="Start Drill" selected variant="wide" />
             </TouchableOpacity>
           </View>
         )}
@@ -245,29 +310,23 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+  heroTrophy: { width: 56, height: 56 },
   heroTitle: { fontSize: 27, fontFamily: "Inter_700Bold" },
   heroSub: { fontSize: 14, fontFamily: "Inter_600SemiBold", marginTop: 2 },
   boardFilters: { gap: 8, paddingRight: 4 },
   boardBtn: {
     minWidth: 88,
-    minHeight: 42,
+    height: 44,
     borderRadius: 14,
-    borderWidth: 1.5,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 14,
+    overflow: "hidden",
   },
-  boardText: { fontSize: 13, fontFamily: "Inter_700Bold" },
   filters: { flexDirection: "row", gap: 8 },
   filterBtn: {
     flex: 1,
-    minHeight: 44,
+    height: 44,
     borderRadius: 15,
-    borderWidth: 1.5,
-    alignItems: "center",
-    justifyContent: "center",
+    overflow: "hidden",
   },
-  filterText: { fontSize: 13, fontFamily: "Inter_700Bold" },
   podiumRow: { flexDirection: "row", gap: 10, alignItems: "flex-start" },
   podiumCard: {
     flex: 1,
@@ -307,11 +366,9 @@ const styles = StyleSheet.create({
   },
   emptyTitle: { fontSize: 22, fontFamily: "Inter_700Bold" },
   startBtn: {
-    minWidth: 160,
-    minHeight: 52,
+    width: 170,
+    height: 54,
     borderRadius: 18,
-    alignItems: "center",
-    justifyContent: "center",
+    overflow: "hidden",
   },
-  startText: { color: "#FFFFFF", fontSize: 17, fontFamily: "Inter_700Bold" },
 });
