@@ -12,6 +12,14 @@ import {
   View,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
+import Svg, {
+  Defs,
+  LinearGradient as SvgLinearGradient,
+  Path,
+  Rect,
+  Stop,
+  Text as SvgText,
+} from "react-native-svg";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ROCKET_PARTS } from "@/constants/rocketParts";
 import { getProfileAvatarAsset } from "@/constants/profileAvatars";
@@ -47,6 +55,43 @@ type NavItem = {
   badgeColor?: string;
   highlight?: boolean;
 };
+
+function HomeStartButtonArt() {
+  const width = 430;
+  const height = 150;
+  return (
+    <Svg width="100%" height="100%" viewBox={`0 0 ${width} ${height}`}>
+      <Defs>
+        <SvgLinearGradient id="home-start-fill" x1="0" y1="0" x2="0" y2="1">
+          <Stop offset="0" stopColor="#A88EFF" />
+          <Stop offset="0.56" stopColor="#7F5AFF" />
+          <Stop offset="1" stopColor="#6F4CFF" />
+        </SvgLinearGradient>
+        <SvgLinearGradient id="home-start-shine" x1="0" y1="0" x2="0" y2="1">
+          <Stop offset="0" stopColor="#FFFFFF" stopOpacity={0.42} />
+          <Stop offset="0.24" stopColor="#FFFFFF" stopOpacity={0.12} />
+          <Stop offset="1" stopColor="#000000" stopOpacity={0.1} />
+        </SvgLinearGradient>
+      </Defs>
+      <Rect x="9" y="9" width={width - 18} height={height - 18} rx="42" fill="#7D63FF" />
+      <Rect x="17" y="16" width={width - 34} height={height - 32} rx="34" fill="url(#home-start-fill)" />
+      <Rect x="17" y="16" width={width - 34} height={height - 32} rx="34" fill="url(#home-start-shine)" />
+      <Rect x="24" y="23" width={width - 48} height={height - 46} rx="28" fill="none" stroke="#DCD3FF" strokeWidth="4" opacity={0.68} />
+      <Path
+        d={`M42 34h100l18-18h110l18 18h100M42 ${height - 34}h100l18 18h110l18-18h100`}
+        fill="none"
+        stroke="#DCD3FF"
+        strokeWidth="6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        opacity={0.78}
+      />
+      <SvgText x={width / 2} y="91" fill="#FFFFFF" fontSize="46" fontWeight="900" textAnchor="middle" letterSpacing="0">
+        Start Drill
+      </SvgText>
+    </Svg>
+  );
+}
 
 export default function HomeScreen() {
   const colors = useColors();
@@ -132,15 +177,10 @@ export default function HomeScreen() {
             <View style={styles.heroCopy}>
               <View style={styles.heroEyebrow}>
                 <Image source={MENU_ASSETS.operations} style={styles.eyebrowIcon} resizeMode="contain" />
-                <Text style={styles.heroEyebrowText}>60 second challenge</Text>
+                <Text style={styles.heroEyebrowText}>Math Drill</Text>
               </View>
-              <Text style={styles.heroTitle}>Math Fuel</Text>
-              <Text style={styles.heroSub} numberOfLines={2}>Solve fast. Power your rocket.</Text>
               <View style={styles.heroStartPill}>
-                <View style={styles.heroPlayBadge}>
-                  <Feather name="play" size={17} color="#101027" />
-                </View>
-                <Text style={styles.heroStartText}>Start Drill</Text>
+                <HomeStartButtonArt />
               </View>
             </View>
             <Image source={MENU_ASSETS.start} style={styles.heroAsset} resizeMode="contain" />
@@ -314,32 +354,17 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     borderColor: "rgba(255,255,255,0.12)",
   },
-  heroCopy: { flex: 1, gap: 9, paddingRight: 130, zIndex: 1 },
+  heroCopy: { flex: 1, gap: 12, paddingRight: 126, zIndex: 1 },
   heroEyebrow: { flexDirection: "row", alignItems: "center", gap: 8 },
   eyebrowIcon: { width: 28, height: 28 },
   heroEyebrowText: { color: "#9AE6FF", fontSize: 12, fontFamily: "Inter_700Bold", textTransform: "uppercase", letterSpacing: 0 },
-  heroTitle: { color: "#FFFFFF", fontSize: 27, fontFamily: "Inter_700Bold", lineHeight: 31 },
-  heroSub: { color: "rgba(255,255,255,0.74)", fontSize: 13, fontFamily: "Inter_500Medium", lineHeight: 18 },
   heroStartPill: {
-    marginTop: 4,
     alignSelf: "flex-start",
-    minWidth: 142,
-    height: 48,
-    paddingLeft: 10,
-    paddingRight: 18,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 9,
-    borderRadius: 16,
-    backgroundColor: "#FFD166",
-    shadowColor: "#FFD166",
-    shadowOpacity: 0.25,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
+    width: 174,
+    height: 58,
+    borderRadius: 18,
+    overflow: "hidden",
   },
-  heroPlayBadge: { width: 28, height: 28, borderRadius: 9, backgroundColor: "rgba(255,255,255,0.48)", alignItems: "center", justifyContent: "center" },
-  heroStartText: { color: "#09091A", fontSize: 14, fontFamily: "Inter_700Bold" },
   heroAsset: { position: "absolute", right: 12, bottom: 16, width: 108, height: 108, opacity: 0.98 },
   currencyRow: { flexDirection: "row", gap: 10 },
   currencyCard: { minHeight: 76, borderRadius: 18, paddingHorizontal: 10, paddingVertical: 10, flexDirection: "row", alignItems: "center", gap: 8, borderWidth: 1.5 },
