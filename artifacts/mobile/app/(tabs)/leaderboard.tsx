@@ -25,6 +25,7 @@ import { PinnedHeader, usePinnedHeaderHeight } from "@/components/PinnedHeader";
 import type { Difficulty } from "@/constants/achievements";
 import { getProfileAvatarAsset } from "@/constants/profileAvatars";
 import { RESULT_ASSETS } from "@/constants/resultAssets";
+import { ZOO_ANIMALS } from "@/constants/zooAnimals";
 import { useGame } from "@/context/GameContext";
 import { useProfiles } from "@/context/ProfileContext";
 import { useColors } from "@/hooks/useColors";
@@ -136,7 +137,7 @@ function BevelButtonArt({
 export default function LeaderboardScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { gameData, claimLeaderboardPrize } = useGame();
+  const { gameData, settings, claimLeaderboardPrize } = useGame();
   const { activeProfile } = useProfiles();
   const headerHeight = usePinnedHeaderHeight();
   const bottomPad = Platform.OS === "web" ? 34 : insets.bottom;
@@ -156,9 +157,9 @@ export default function LeaderboardScreen() {
     setEntries(result.entries);
     setOnline(result.online);
     setSeason(result.season);
-    setPrizes(result.prizes);
+    setPrizes(settings.leaderboardPrizes[board] ?? result.prizes);
     setRefreshing(false);
-  }, [board, scope]);
+  }, [board, scope, settings.leaderboardPrizes]);
 
   useEffect(() => {
     load();
@@ -167,12 +168,12 @@ export default function LeaderboardScreen() {
   useEffect(() => {
     if (!activeProfile) return;
     let cancelled = false;
-    fetchFinishedLeaderboardPrizeAwards(activeProfile.id)
+    fetchFinishedLeaderboardPrizeAwards(activeProfile.id, settings.leaderboardPrizes)
       .then((awards) => {
         if (cancelled) return;
         awards.forEach((award) => {
           if (!gameData.claimedLeaderboardPrizes?.[award.id]) {
-            claimLeaderboardPrize(award.id, award.points, award.starCoins);
+            claimLeaderboardPrize(award.id, award);
           }
         });
       })
@@ -180,7 +181,7 @@ export default function LeaderboardScreen() {
     return () => {
       cancelled = true;
     };
-  }, [activeProfile, claimLeaderboardPrize, gameData.claimedLeaderboardPrizes]);
+  }, [activeProfile, claimLeaderboardPrize, gameData.claimedLeaderboardPrizes, settings.leaderboardPrizes]);
 
   const topThree = useMemo(() => entries.slice(0, 3), [entries]);
   const rest = useMemo(() => entries.slice(3), [entries]);
@@ -226,15 +227,25 @@ export default function LeaderboardScreen() {
           <View style={[styles.prizePanel, { backgroundColor: colors.card, borderColor: colors.gold + "66" }]}>
             <Text style={[styles.prizeTitle, { color: colors.gold }]}>Refresh prizes</Text>
             {prizes.map((prize) => (
-              <View key={prize.rank} style={styles.prizeRow}>
-                <Text style={[styles.prizeRank, { color: colors.foreground }]}>#{prize.rank}</Text>
-                <Text style={[styles.prizeText, { color: colors.mutedForeground }]} numberOfLines={1}>
-                  {prize.label}
-                </Text>
-                <Text style={[styles.prizeValue, { color: colors.gold }]}>
-                  +{prize.points} pts · +{prize.starCoins}
-                </Text>
-              </View>
+              (() => {
+                const prizeAnimal = prize.zooAnimalId
+                  ? ZOO_ANIMALS.find((animal) => animal.id === prize.zooAnimalId)
+                  : null;
+                return (
+                  <View key={prize.rank} style={styles.prizeRow}>
+                    <Text style={[styles.prizeRank, { color: colors.foreground }]}>#{prize.rank}</Text>
+                    {prizeAnimal ? <Image source={prizeAnimal.asset} style={styles.prizeAnimal} resizeMode="contain" /> : null}
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      <Text style={[styles.prizeText, { color: colors.foreground }]} numberOfLines={1}>
+                        {prize.label}
+                      </Text>
+                      <Text style={[styles.prizeValue, { color: colors.gold }]} numberOfLines={1}>
+                        +{prize.points} pts · +{prize.starCoins} Star Coins{prizeAnimal ? " · special animal" : ""}
+                      </Text>
+                    </View>
+                  </View>
+                );
+              })()
             ))}
           </View>
         )}
@@ -380,8 +391,9 @@ const styles = StyleSheet.create({
   prizeTitle: { fontSize: 15, fontFamily: "Inter_700Bold" },
   prizeRow: { flexDirection: "row", alignItems: "center", gap: 8 },
   prizeRank: { width: 28, fontSize: 13, fontFamily: "Inter_700Bold" },
-  prizeText: { flex: 1, fontSize: 12, fontFamily: "Inter_600SemiBold" },
-  prizeValue: { fontSize: 12, fontFamily: "Inter_700Bold" },
+  prizeAnimal: { width: 34, height: 34 },
+  prizeText: { fontSize: 12, fontFamily: "Inter_700Bold" },
+  prizeValue: { fontSize: 11, fontFamily: "Inter_700Bold", marginTop: 1 },
   boardFilters: { flexDirection: "row", gap: 8 },
   boardBtn: {
     flex: 1,

@@ -20,7 +20,10 @@ export interface LeaderboardPrize {
   points: number;
   starCoins: number;
   label: string;
+  zooAnimalId?: string;
 }
+
+export type LeaderboardPrizeConfig = Record<LeaderboardBoard, LeaderboardPrize[]>;
 
 export interface LeaderboardEntry {
   id: string;
@@ -61,7 +64,7 @@ export function isOnlineLeaderboardConfigured() {
   return apiBaseUrl.length > 0;
 }
 
-export const LEADERBOARD_PRIZES: Record<LeaderboardBoard, LeaderboardPrize[]> = {
+export const LEADERBOARD_PRIZES: LeaderboardPrizeConfig = {
   oneMinute: [
     { rank: 1, points: 500, starCoins: 250, label: "Monthly 1-Minute Champion" },
     { rank: 2, points: 300, starCoins: 150, label: "Monthly 1-Minute Runner-Up" },
@@ -252,7 +255,7 @@ export async function fetchLeaderboard(scope: LeaderboardScope = "all", board: L
   };
 }
 
-export async function fetchFinishedLeaderboardPrizeAwards(playerId: string) {
+export async function fetchFinishedLeaderboardPrizeAwards(playerId: string, prizes: LeaderboardPrizeConfig = LEADERBOARD_PRIZES) {
   const awards: LeaderboardPrizeAward[] = [];
   const boards: LeaderboardBoard[] = ["oneMinute", "day", "week", "month"];
   const scopes: Array<Exclude<LeaderboardScope, "all">> = ["easy", "medium", "hard"];
@@ -265,7 +268,7 @@ export async function fetchFinishedLeaderboardPrizeAwards(playerId: string) {
       const rankIndex = result.entries.findIndex((entry) => entry.playerId === playerId);
       if (rankIndex < 0) continue;
       const rank = rankIndex + 1;
-      const prize = LEADERBOARD_PRIZES[board].find((item) => item.rank === rank);
+      const prize = (prizes[board] ?? LEADERBOARD_PRIZES[board]).find((item) => item.rank === rank);
       if (!prize) continue;
       awards.push({
         ...prize,

@@ -14,6 +14,7 @@ import {
   type DrillResult,
   type Operation,
 } from "@/constants/achievements";
+import { LEADERBOARD_PRIZES, type LeaderboardPrize, type LeaderboardPrizeConfig } from "@/utils/leaderboard";
 
 const DEFAULT_STORAGE_KEY = "@mathdrills_v4";
 
@@ -204,6 +205,7 @@ export interface GameSettings {
   musicVolume: number;
   mainMusicTracks: string[];
   spaceMusicTracks: string[];
+  leaderboardPrizes: LeaderboardPrizeConfig;
   soundtrackVersion: number;
   hapticsEnabled: boolean;
 }
@@ -226,6 +228,7 @@ const DEFAULT_SETTINGS: GameSettings = {
   musicVolume: 0.75,
   mainMusicTracks: ["main-1", "main-2", "main-3"],
   spaceMusicTracks: ["space-1", "space-2", "space-3", "space-4", "space-5"],
+  leaderboardPrizes: LEADERBOARD_PRIZES,
   soundtrackVersion: 3,
   hapticsEnabled: true,
 };
@@ -266,9 +269,16 @@ function mergeTrackDefaults(saved: string[] | undefined, defaults: string[]) {
 
 function normalizeSettings(settings: Partial<GameSettings> | undefined): GameSettings {
   const merged = { ...DEFAULT_SETTINGS, ...settings };
+  const leaderboardPrizes: LeaderboardPrizeConfig = {
+    oneMinute: settings?.leaderboardPrizes?.oneMinute ?? LEADERBOARD_PRIZES.oneMinute,
+    day: settings?.leaderboardPrizes?.day ?? LEADERBOARD_PRIZES.day,
+    week: settings?.leaderboardPrizes?.week ?? LEADERBOARD_PRIZES.week,
+    month: settings?.leaderboardPrizes?.month ?? LEADERBOARD_PRIZES.month,
+  };
   const shouldUpgradeTrackLists = (settings?.soundtrackVersion ?? 1) < DEFAULT_SETTINGS.soundtrackVersion;
   return {
     ...merged,
+    leaderboardPrizes,
     mainMusicTracks: shouldUpgradeTrackLists
       ? mergeTrackDefaults(settings?.mainMusicTracks, DEFAULT_SETTINGS.mainMusicTracks)
       : merged.mainMusicTracks,
@@ -410,7 +420,7 @@ interface GameContextType {
   updateSettings: (partial: Partial<GameSettings>) => void;
   saveSession: (result: DrillResult) => SaveSessionResult;
   addDrillTickRewards: (points: number, starCoins: number) => void;
-  claimLeaderboardPrize: (prizeId: string, points: number, starCoins: number) => boolean;
+  claimLeaderboardPrize: (prizeId: string, prize: LeaderboardPrize) => boolean;
   lastSession: (DrillResult & {
     newAchievements: string[];
     pointsEarned: number;
@@ -614,16 +624,21 @@ export function GameProvider({
   );
 
   const claimLeaderboardPrize = useCallback(
-    (prizeId: string, points: number, starCoins: number) => {
-      if (!prizeId || (points <= 0 && starCoins <= 0)) return false;
+    (prizeId: string, prize: LeaderboardPrize) => {
+      if (!prizeId) return false;
       let claimed = false;
       setGameData((prev) => {
         if (prev.claimedLeaderboardPrizes?.[prizeId]) return prev;
+        const zooAnimalId = prize.zooAnimalId;
+        const nextZooAnimals = zooAnimalId && !prev.zooAnimals.includes(zooAnimalId)
+          ? [...prev.zooAnimals, zooAnimalId]
+          : prev.zooAnimals;
         claimed = true;
         const next: GameData = {
           ...prev,
-          points: roundCurrency(prev.points + Math.max(0, points)),
-          starCoins: roundCurrency(prev.starCoins + Math.max(0, starCoins)),
+          points: roundCurrency(prev.points + Math.max(0, prize.points)),
+          starCoins: roundCurrency(prev.starCoins + Math.max(0, prize.starCoins)),
+          zooAnimals: nextZooAnimals,
           claimedLeaderboardPrizes: {
             ...(prev.claimedLeaderboardPrizes ?? {}),
             [prizeId]: Date.now(),

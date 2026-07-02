@@ -312,6 +312,12 @@ export default function SettingsScreen() {
             subtitle="Slowest questions and most missed problems"
             onPress={() => router.push("/account" as any)}
           />
+          <SettingsAction
+            icon="award"
+            title="Leaderboard rewards"
+            subtitle="Manage seasonal prizes and special giveaways"
+            onPress={() => router.push("/leaderboard-rewards" as any)}
+          />
         </View>
 
         <View style={styles.section}>

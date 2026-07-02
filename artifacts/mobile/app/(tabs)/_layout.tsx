@@ -15,6 +15,7 @@ export default function GameStackLayout() {
       <Stack.Screen name="index" />
       <Stack.Screen name="setup" />
       <Stack.Screen name="settings" />
+      <Stack.Screen name="leaderboard-rewards" />
       <Stack.Screen name="account" />
       <Stack.Screen name="account-analytics" />
       <Stack.Screen name="leaderboard" />
