@@ -25,12 +25,17 @@ import { PinnedHeader, usePinnedHeaderHeight } from "@/components/PinnedHeader";
 import type { Difficulty } from "@/constants/achievements";
 import { getProfileAvatarAsset } from "@/constants/profileAvatars";
 import { RESULT_ASSETS } from "@/constants/resultAssets";
+import { useGame } from "@/context/GameContext";
+import { useProfiles } from "@/context/ProfileContext";
 import { useColors } from "@/hooks/useColors";
 import {
+  fetchFinishedLeaderboardPrizeAwards,
   fetchLeaderboard,
   formatOperations,
+  type LeaderboardPrize,
   type LeaderboardBoard,
   type LeaderboardEntry,
+  type LeaderboardSeason,
   type LeaderboardScope,
 } from "@/utils/leaderboard";
 
@@ -131,6 +136,8 @@ function BevelButtonArt({
 export default function LeaderboardScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
+  const { gameData, claimLeaderboardPrize } = useGame();
+  const { activeProfile } = useProfiles();
   const headerHeight = usePinnedHeaderHeight();
   const bottomPad = Platform.OS === "web" ? 34 : insets.bottom;
   const [board, setBoard] = useState<LeaderboardBoard>("oneMinute");
@@ -138,6 +145,8 @@ export default function LeaderboardScreen() {
   const [entries, setEntries] = useState<LeaderboardEntry[]>([]);
   const [online, setOnline] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [season, setSeason] = useState<LeaderboardSeason | null>(null);
+  const [prizes, setPrizes] = useState<LeaderboardPrize[]>([]);
 
   const boardInfo = BOARDS.find((item) => item.id === board) ?? BOARDS[0];
 
@@ -146,6 +155,8 @@ export default function LeaderboardScreen() {
     const result = await fetchLeaderboard(scope, board);
     setEntries(result.entries);
     setOnline(result.online);
+    setSeason(result.season);
+    setPrizes(result.prizes);
     setRefreshing(false);
   }, [board, scope]);
 
@@ -153,12 +164,40 @@ export default function LeaderboardScreen() {
     load();
   }, [load]);
 
+  useEffect(() => {
+    if (!activeProfile) return;
+    let cancelled = false;
+    fetchFinishedLeaderboardPrizeAwards(activeProfile.id)
+      .then((awards) => {
+        if (cancelled) return;
+        awards.forEach((award) => {
+          if (!gameData.claimedLeaderboardPrizes?.[award.id]) {
+            claimLeaderboardPrize(award.id, award.points, award.starCoins);
+          }
+        });
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [activeProfile, claimLeaderboardPrize, gameData.claimedLeaderboardPrizes]);
+
   const topThree = useMemo(() => entries.slice(0, 3), [entries]);
   const rest = useMemo(() => entries.slice(3), [entries]);
 
   async function shareEntry(entry: LeaderboardEntry) {
     await Share.share({ message: scoreLine(entry) });
   }
+
+  const resetText = useMemo(() => {
+    if (!season) return "";
+    const resetDate = new Date(season.endsAt);
+    if (board === "day") {
+      return `Resets tomorrow at ${resetDate.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`;
+    }
+    if (board === "week") return `Resets ${resetDate.toLocaleDateString([], { weekday: "long" })}`;
+    return `Resets ${resetDate.toLocaleDateString([], { month: "long", day: "numeric" })}`;
+  }, [board, season]);
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
@@ -179,8 +218,26 @@ export default function LeaderboardScreen() {
             <Text style={[styles.heroSub, { color: colors.mutedForeground }]}>
               {online ? "Online scores are live" : "Local scores saved on this device"}
             </Text>
+            {resetText ? <Text style={[styles.heroReset, { color: "#9AE6FF" }]}>{resetText}</Text> : null}
           </View>
         </View>
+
+        {prizes.length > 0 && (
+          <View style={[styles.prizePanel, { backgroundColor: colors.card, borderColor: colors.gold + "66" }]}>
+            <Text style={[styles.prizeTitle, { color: colors.gold }]}>Refresh prizes</Text>
+            {prizes.map((prize) => (
+              <View key={prize.rank} style={styles.prizeRow}>
+                <Text style={[styles.prizeRank, { color: colors.foreground }]}>#{prize.rank}</Text>
+                <Text style={[styles.prizeText, { color: colors.mutedForeground }]} numberOfLines={1}>
+                  {prize.label}
+                </Text>
+                <Text style={[styles.prizeValue, { color: colors.gold }]}>
+                  +{prize.points} pts · +{prize.starCoins}
+                </Text>
+              </View>
+            ))}
+          </View>
+        )}
 
         <View style={styles.boardFilters}>
           {BOARDS.map((item) => {
@@ -313,6 +370,18 @@ const styles = StyleSheet.create({
   heroTrophy: { width: 56, height: 56 },
   heroTitle: { fontSize: 27, fontFamily: "Inter_700Bold" },
   heroSub: { fontSize: 14, fontFamily: "Inter_600SemiBold", marginTop: 2 },
+  heroReset: { fontSize: 12, fontFamily: "Inter_700Bold", marginTop: 4 },
+  prizePanel: {
+    borderRadius: 18,
+    borderWidth: 1.5,
+    padding: 12,
+    gap: 8,
+  },
+  prizeTitle: { fontSize: 15, fontFamily: "Inter_700Bold" },
+  prizeRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+  prizeRank: { width: 28, fontSize: 13, fontFamily: "Inter_700Bold" },
+  prizeText: { flex: 1, fontSize: 12, fontFamily: "Inter_600SemiBold" },
+  prizeValue: { fontSize: 12, fontFamily: "Inter_700Bold" },
   boardFilters: { flexDirection: "row", gap: 8 },
   boardBtn: {
     flex: 1,

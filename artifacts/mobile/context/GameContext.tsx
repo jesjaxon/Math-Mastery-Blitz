@@ -190,6 +190,7 @@ export interface GameData {
   totalGames: number;
   allTimeBest: number;
   questionAnalytics: Record<string, QuestionAnalyticsStats>;
+  claimedLeaderboardPrizes: Record<string, number>;
 }
 
 export interface GameSettings {
@@ -252,6 +253,7 @@ const DEFAULT_DATA: GameData = {
   totalGames: 0,
   allTimeBest: 0,
   questionAnalytics: {},
+  claimedLeaderboardPrizes: {},
 };
 
 function mergeTrackDefaults(saved: string[] | undefined, defaults: string[]) {
@@ -408,6 +410,7 @@ interface GameContextType {
   updateSettings: (partial: Partial<GameSettings>) => void;
   saveSession: (result: DrillResult) => SaveSessionResult;
   addDrillTickRewards: (points: number, starCoins: number) => void;
+  claimLeaderboardPrize: (prizeId: string, points: number, starCoins: number) => boolean;
   lastSession: (DrillResult & {
     newAchievements: string[];
     pointsEarned: number;
@@ -606,6 +609,30 @@ export function GameProvider({
         persist(next, settingsRef.current);
         return next;
       });
+    },
+    [persist]
+  );
+
+  const claimLeaderboardPrize = useCallback(
+    (prizeId: string, points: number, starCoins: number) => {
+      if (!prizeId || (points <= 0 && starCoins <= 0)) return false;
+      let claimed = false;
+      setGameData((prev) => {
+        if (prev.claimedLeaderboardPrizes?.[prizeId]) return prev;
+        claimed = true;
+        const next: GameData = {
+          ...prev,
+          points: roundCurrency(prev.points + Math.max(0, points)),
+          starCoins: roundCurrency(prev.starCoins + Math.max(0, starCoins)),
+          claimedLeaderboardPrizes: {
+            ...(prev.claimedLeaderboardPrizes ?? {}),
+            [prizeId]: Date.now(),
+          },
+        };
+        persist(next, settingsRef.current);
+        return next;
+      });
+      return claimed;
     },
     [persist]
   );
@@ -990,6 +1017,7 @@ export function GameProvider({
         updateSettings,
         saveSession,
         addDrillTickRewards,
+        claimLeaderboardPrize,
         lastSession,
         setLastSession,
         claimBonus,

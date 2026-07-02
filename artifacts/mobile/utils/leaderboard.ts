@@ -9,6 +9,19 @@ const apiBaseUrl = (process.env.EXPO_PUBLIC_LEADERBOARD_URL ?? "").replace(/\/$/
 export type LeaderboardScope = "all" | Difficulty;
 export type LeaderboardBoard = "oneMinute" | "day" | "week" | "month";
 
+export interface LeaderboardSeason {
+  id: string;
+  startsAt: number;
+  endsAt: number;
+}
+
+export interface LeaderboardPrize {
+  rank: number;
+  points: number;
+  starCoins: number;
+  label: string;
+}
+
 export interface LeaderboardEntry {
   id: string;
   playerId: string;
@@ -37,9 +50,39 @@ export interface LeaderboardSubmitInput {
   starCoinsEarned: number;
 }
 
+export interface LeaderboardPrizeAward extends LeaderboardPrize {
+  id: string;
+  board: LeaderboardBoard;
+  scope: Exclude<LeaderboardScope, "all">;
+  season: LeaderboardSeason;
+}
+
 export function isOnlineLeaderboardConfigured() {
   return apiBaseUrl.length > 0;
 }
+
+export const LEADERBOARD_PRIZES: Record<LeaderboardBoard, LeaderboardPrize[]> = {
+  oneMinute: [
+    { rank: 1, points: 500, starCoins: 250, label: "Monthly 1-Minute Champion" },
+    { rank: 2, points: 300, starCoins: 150, label: "Monthly 1-Minute Runner-Up" },
+    { rank: 3, points: 150, starCoins: 75, label: "Monthly 1-Minute Top 3" },
+  ],
+  day: [
+    { rank: 1, points: 100, starCoins: 40, label: "Daily Question Champion" },
+    { rank: 2, points: 60, starCoins: 25, label: "Daily Runner-Up" },
+    { rank: 3, points: 30, starCoins: 10, label: "Daily Top 3" },
+  ],
+  week: [
+    { rank: 1, points: 350, starCoins: 150, label: "Weekly Question Champion" },
+    { rank: 2, points: 200, starCoins: 90, label: "Weekly Runner-Up" },
+    { rank: 3, points: 100, starCoins: 40, label: "Weekly Top 3" },
+  ],
+  month: [
+    { rank: 1, points: 900, starCoins: 400, label: "Monthly Question Champion" },
+    { rank: 2, points: 550, starCoins: 240, label: "Monthly Runner-Up" },
+    { rank: 3, points: 275, starCoins: 120, label: "Monthly Top 3" },
+  ],
+};
 
 function cleanName(name: string) {
   return name.trim().slice(0, 24) || "Player";
@@ -54,23 +97,36 @@ function sortEntries(entries: LeaderboardEntry[]) {
   });
 }
 
-function boardStart(board: LeaderboardBoard) {
-  const now = new Date();
-  if (board === "day") return new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+export function getLeaderboardSeason(board: LeaderboardBoard, at = Date.now()): LeaderboardSeason {
+  const now = new Date(at);
+  if (board === "day") {
+    const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const end = new Date(start);
+    end.setDate(end.getDate() + 1);
+    return { id: `day:${start.toISOString().slice(0, 10)}`, startsAt: start.getTime(), endsAt: end.getTime() };
+  }
   if (board === "week") {
     const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     start.setDate(start.getDate() - start.getDay());
-    return start.getTime();
+    const end = new Date(start);
+    end.setDate(end.getDate() + 7);
+    return { id: `week:${start.toISOString().slice(0, 10)}`, startsAt: start.getTime(), endsAt: end.getTime() };
   }
-  if (board === "month") return new Date(now.getFullYear(), now.getMonth(), 1).getTime();
-  return 0;
+  const start = new Date(now.getFullYear(), now.getMonth(), 1);
+  const end = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+  return {
+    id: `${board === "oneMinute" ? "oneMinute" : "month"}:${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, "0")}`,
+    startsAt: start.getTime(),
+    endsAt: end.getTime(),
+  };
 }
 
-function aggregateEntries(entries: LeaderboardEntry[], board: LeaderboardBoard) {
+function aggregateEntries(entries: LeaderboardEntry[], board: LeaderboardBoard, at?: number) {
+  const season = getLeaderboardSeason(board, at);
   if (board === "oneMinute") {
     const bestByPlayer = new Map<string, LeaderboardEntry>();
     entries
-      .filter((entry) => entry.timeLimit === 60)
+      .filter((entry) => entry.timeLimit === 60 && entry.submittedAt >= season.startsAt && entry.submittedAt < season.endsAt)
       .forEach((entry) => {
         const current = bestByPlayer.get(entry.playerId);
         if (!current || sortEntries([entry, current])[0].id === entry.id) {
@@ -80,11 +136,10 @@ function aggregateEntries(entries: LeaderboardEntry[], board: LeaderboardBoard) 
     return sortEntries(Array.from(bestByPlayer.values())).slice(0, 100);
   }
 
-  const start = boardStart(board);
   const totals = new Map<string, LeaderboardEntry>();
 
   entries
-    .filter((entry) => entry.submittedAt >= start)
+    .filter((entry) => entry.submittedAt >= season.startsAt && entry.submittedAt < season.endsAt)
     .forEach((entry) => {
       const key = entry.playerId;
       const current = totals.get(key);
@@ -107,9 +162,9 @@ function aggregateEntries(entries: LeaderboardEntry[], board: LeaderboardBoard) 
   return sortEntries(Array.from(totals.values())).slice(0, 100);
 }
 
-function scopeEntries(entries: LeaderboardEntry[], scope: LeaderboardScope, board: LeaderboardBoard) {
+function scopeEntries(entries: LeaderboardEntry[], scope: LeaderboardScope, board: LeaderboardBoard, at?: number) {
   const scoped = scope === "all" ? entries : entries.filter((entry) => entry.difficulty === scope);
-  return aggregateEntries(scoped, board);
+  return aggregateEntries(scoped, board, at);
 }
 
 async function readLocalEntries() {
@@ -168,21 +223,61 @@ export async function submitLeaderboardScore(input: LeaderboardSubmitInput) {
   }
 }
 
-export async function fetchLeaderboard(scope: LeaderboardScope = "all", board: LeaderboardBoard = "oneMinute") {
+export async function fetchLeaderboard(scope: LeaderboardScope = "all", board: LeaderboardBoard = "oneMinute", at?: number) {
   if (isOnlineLeaderboardConfigured()) {
     try {
       const params = new URLSearchParams({ scope, board });
+      if (typeof at === "number") params.set("at", String(Math.floor(at)));
       const res = await fetch(`${apiBaseUrl}/api/leaderboard?${params.toString()}`);
       if (!res.ok) throw new Error(`Leaderboard fetch failed: ${res.status}`);
-      const data = (await res.json()) as { entries?: LeaderboardEntry[] };
-      return { entries: sortEntries(data.entries ?? []), online: true };
+      const data = (await res.json()) as { entries?: LeaderboardEntry[]; season?: LeaderboardSeason; prizes?: LeaderboardPrize[] };
+      return {
+        entries: sortEntries(data.entries ?? []),
+        online: true,
+        season: data.season ?? getLeaderboardSeason(board),
+        prizes: data.prizes ?? LEADERBOARD_PRIZES[board],
+      };
     } catch {
       // Fall back to local results when the hosted service is unreachable.
     }
   }
 
   const local = await readLocalEntries();
-  return { entries: scopeEntries(local, scope, board), online: false };
+  const season = getLeaderboardSeason(board, at);
+  return {
+    entries: scopeEntries(local, scope, board, at),
+    online: false,
+    season,
+    prizes: LEADERBOARD_PRIZES[board],
+  };
+}
+
+export async function fetchFinishedLeaderboardPrizeAwards(playerId: string) {
+  const awards: LeaderboardPrizeAward[] = [];
+  const boards: LeaderboardBoard[] = ["oneMinute", "day", "week", "month"];
+  const scopes: Array<Exclude<LeaderboardScope, "all">> = ["easy", "medium", "hard"];
+
+  for (const board of boards) {
+    const currentSeason = getLeaderboardSeason(board);
+    const previousAt = currentSeason.startsAt - 1;
+    for (const scope of scopes) {
+      const result = await fetchLeaderboard(scope, board, previousAt);
+      const rankIndex = result.entries.findIndex((entry) => entry.playerId === playerId);
+      if (rankIndex < 0) continue;
+      const rank = rankIndex + 1;
+      const prize = LEADERBOARD_PRIZES[board].find((item) => item.rank === rank);
+      if (!prize) continue;
+      awards.push({
+        ...prize,
+        id: `${board}:${scope}:${result.season.id}:rank-${rank}`,
+        board,
+        scope,
+        season: result.season,
+      });
+    }
+  }
+
+  return awards;
 }
 
 export function formatOperations(operations: Operation[]) {
