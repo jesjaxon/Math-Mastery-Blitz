@@ -190,6 +190,17 @@ async function saveLocalEntry(entry: LeaderboardEntry) {
   return next;
 }
 
+function mergeVisibleEntries(onlineEntries: LeaderboardEntry[], localEntries: LeaderboardEntry[]) {
+  const bestByPlayer = new Map<string, LeaderboardEntry>();
+  [...onlineEntries, ...localEntries].forEach((entry) => {
+    const current = bestByPlayer.get(entry.playerId);
+    if (!current || sortEntries([entry, current])[0].id === entry.id) {
+      bestByPlayer.set(entry.playerId, entry);
+    }
+  });
+  return sortEntries(Array.from(bestByPlayer.values())).slice(0, 100);
+}
+
 export async function submitLeaderboardScore(input: LeaderboardSubmitInput) {
   const entry: LeaderboardEntry = {
     id: `${input.playerId}_${Date.now()}_${Math.random().toString(36).slice(2)}`,
@@ -227,6 +238,10 @@ export async function submitLeaderboardScore(input: LeaderboardSubmitInput) {
 }
 
 export async function fetchLeaderboard(scope: LeaderboardScope = "all", board: LeaderboardBoard = "oneMinute", at?: number) {
+  const local = await readLocalEntries();
+  const localEntries = scopeEntries(local, scope, board, at);
+  const season = getLeaderboardSeason(board, at);
+
   if (isOnlineLeaderboardConfigured()) {
     try {
       const params = new URLSearchParams({ scope, board });
@@ -235,7 +250,7 @@ export async function fetchLeaderboard(scope: LeaderboardScope = "all", board: L
       if (!res.ok) throw new Error(`Leaderboard fetch failed: ${res.status}`);
       const data = (await res.json()) as { entries?: LeaderboardEntry[]; season?: LeaderboardSeason; prizes?: LeaderboardPrize[] };
       return {
-        entries: sortEntries(data.entries ?? []),
+        entries: mergeVisibleEntries(data.entries ?? [], localEntries),
         online: true,
         season: data.season ?? getLeaderboardSeason(board),
         prizes: data.prizes ?? LEADERBOARD_PRIZES[board],
@@ -245,10 +260,8 @@ export async function fetchLeaderboard(scope: LeaderboardScope = "all", board: L
     }
   }
 
-  const local = await readLocalEntries();
-  const season = getLeaderboardSeason(board, at);
   return {
-    entries: scopeEntries(local, scope, board, at),
+    entries: localEntries,
     online: false,
     season,
     prizes: LEADERBOARD_PRIZES[board],

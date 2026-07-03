@@ -350,9 +350,11 @@ router.get("/leaderboard", async (req, res) => {
 });
 
 router.get("/leaderboard/status", (_req, res) => {
+  const keyType = supabaseServiceRoleKey?.startsWith("sb_secret_") ? "secret" : supabaseServiceRoleKey ? "jwt" : "missing";
   res.json({
     supabaseConfigured: hasSupabaseConfig(),
-    keyType: supabaseServiceRoleKey?.startsWith("sb_secret_") ? "secret" : supabaseServiceRoleKey ? "jwt" : "missing",
+    keyType,
+    durableWritesExpected: keyType === "secret",
   });
 });
 
@@ -371,7 +373,11 @@ router.post("/leaderboard", async (req, res) => {
         return;
       }
     } catch (error) {
-      req.log.error({ err: error }, "Supabase save failed; using leaderboard fallback file");
+      req.log.error({ err: error }, "Supabase save failed");
+      if (hasSupabaseConfig()) {
+        res.status(503).json({ error: "Online leaderboard storage is not accepting scores" });
+        return;
+      }
     }
     const fallbackEntry = await saveFallbackEntry(entry);
     res.status(201).json(fallbackEntry);
