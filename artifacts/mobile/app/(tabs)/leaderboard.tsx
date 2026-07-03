@@ -141,7 +141,7 @@ export default function LeaderboardScreen() {
   const { activeProfile } = useProfiles();
   const headerHeight = usePinnedHeaderHeight();
   const bottomPad = Platform.OS === "web" ? 34 : insets.bottom;
-  const [board, setBoard] = useState<LeaderboardBoard>("oneMinute");
+  const [board, setBoard] = useState<LeaderboardBoard>("day");
   const [scope, setScope] = useState<LeaderboardScope>("all");
   const [entries, setEntries] = useState<LeaderboardEntry[]>([]);
   const [online, setOnline] = useState(false);
@@ -348,6 +348,9 @@ export default function LeaderboardScreen() {
           <View style={[styles.empty, { backgroundColor: colors.card, borderColor: colors.border }]}>
             <Feather name="users" size={38} color={colors.primary} />
             <Text style={[styles.emptyTitle, { color: colors.foreground }]}>No scores yet</Text>
+            <Text style={[styles.emptySub, { color: colors.mutedForeground }]}>
+              {board === "oneMinute" ? "Only 1-minute drills appear on this board." : "Finish a drill to enter this board."}
+            </Text>
             <TouchableOpacity style={styles.startBtn} onPress={() => router.push("/setup")}>
               <BevelButtonArt label="Start Drill" selected variant="wide" />
             </TouchableOpacity>
@@ -446,6 +449,7 @@ const styles = StyleSheet.create({
     gap: 14,
   },
   emptyTitle: { fontSize: 22, fontFamily: "Inter_700Bold" },
+  emptySub: { maxWidth: 260, textAlign: "center", fontSize: 13, fontFamily: "Inter_600SemiBold", lineHeight: 18 },
   startBtn: {
     width: 170,
     height: 54,
