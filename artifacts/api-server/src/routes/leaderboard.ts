@@ -374,10 +374,7 @@ router.post("/leaderboard", async (req, res) => {
       }
     } catch (error) {
       req.log.error({ err: error }, "Supabase save failed");
-      if (hasSupabaseConfig()) {
-        res.status(503).json({ error: "Online leaderboard storage is not accepting scores" });
-        return;
-      }
+      req.log.warn("Using fallback leaderboard file; scores will update now but are not durable until Supabase uses a secret key");
     }
     const fallbackEntry = await saveFallbackEntry(entry);
     res.status(201).json(fallbackEntry);
